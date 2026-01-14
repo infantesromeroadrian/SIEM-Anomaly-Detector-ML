@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # PostgreSQL Database (with TimescaleDB extension)
+  # ============================================================================
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: siem-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-siem_db}
+      POSTGRES_USER: ${POSTGRES_USER:-siem_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siem_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - siem-network
+
+  # ============================================================================
+  # Redis Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: siem-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - siem-network
+
+  # ============================================================================
+  # SIEM API (FastAPI)
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siem-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # API Configuration
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-siem_db}
+      POSTGRES_USER: ${POSTGRES_USER:-siem_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: 0
+      
+      # ML Configuration
+      MODEL_PATH: ${MODEL_PATH:-./models/ensemble_20260113_233849.joblib}
+      MODEL_CONTAMINATION: ${MODEL_CONTAMINATION:-0.03}
+      MODEL_RETRAIN_INTERVAL_HOURS: ${MODEL_RETRAIN_INTERVAL_HOURS:-24}
+      ENSEMBLE_WEIGHTS: ${ENSEMBLE_WEIGHTS:-0.5,0.3,0.2}
+      
+      # Alerting
+      ALERT_THRESHOLD_HIGH: ${ALERT_THRESHOLD_HIGH:-0.8}
+      ALERT_THRESHOLD_MEDIUM: ${ALERT_THRESHOLD_MEDIUM:-0.6}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      
+      # Monitoring
+      PROMETHEUS_ENABLED: ${PROMETHEUS_ENABLED:-true}
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "${API_PORT:-8000}:8000"
+    networks:
+      - siem-network
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+  # ============================================================================
+  # Prometheus (metrics collection)
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: siem-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - siem-network
+
+  # ============================================================================
+  # Grafana (visualization)
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: siem-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3000:3000"
+    networks:
+      - siem-network
+
+  # ============================================================================
+  # Frontend (React UI)
+  # ============================================================================
+  frontend:
+    image: node:18-alpine
+    container_name: siem-frontend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      NODE_ENV: development
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - siem-network
+
+  # ============================================================================
+# Networks
+# ============================================================================
+networks:
+  siem-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

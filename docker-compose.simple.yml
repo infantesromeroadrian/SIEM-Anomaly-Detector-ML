@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: siem-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: siem_db
+      POSTGRES_USER: siem_user
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siem_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - siem-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: siem-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - siem-network
+
+  # SIEM API (FastAPI)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siem-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LOG_LEVEL: INFO
+      DEBUG: "false"
+      
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: siem_db
+      POSTGRES_USER: siem_user
+      POSTGRES_PASSWORD: changeme
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      
+      # ML Model
+      MODEL_PATH: ./models/ensemble_20260113_233849.joblib
+      ENSEMBLE_WEIGHTS: 0.5,0.3,0.2
+      
+      # Alert thresholds
+      ALERT_THRESHOLD_LOW: 0.4
+      ALERT_THRESHOLD_MEDIUM: 0.6
+      ALERT_THRESHOLD_HIGH: 0.8
+      
+      # Prometheus
+      PROMETHEUS_ENABLED: "true"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - siem-network
+    volumes:
+      - ./models:/app/models:ro
+      - logs_data:/app/logs
+
+  # Frontend (React)
+  frontend:
+    image: node:18-alpine
+    container_name: siem-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    networks:
+      - siem-network
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  logs_data:
+
+networks:
+  siem-network:
+    driver: bridge

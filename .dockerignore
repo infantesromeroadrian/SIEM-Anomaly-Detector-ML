@@ -1,0 +1,80 @@
+# ============================================================================
+# Docker Ignore - Exclude from Docker build context
+# ============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+# Exclude all .md except README.md (needed for pip install)
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Type Checking
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Data & Models (heavy files)
+data/
+models/*.joblib
+models/*.pkl
+backups/
+logs/
+*.log
+
+# Environment
+.env
+.env.*
+*.env
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Monitoring configs (not needed in container)
+monitoring/
+
+# Scripts (handled separately)
+scripts/benchmark.py

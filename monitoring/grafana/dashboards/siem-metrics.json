@@ -1,0 +1,80 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "siem-overview",
+    "title": "SIEM Anomaly Detector - Overview",
+    "tags": ["siem", "security", "anomaly-detection"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "graph",
+        "title": "Request Rate",
+        "targets": [
+          {
+            "expr": "rate(siem_requests_total[1m])",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/s"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "graph",
+        "title": "Anomalies Detected",
+        "targets": [
+          {
+            "expr": "siem_anomalies_detected_total",
+            "legendFormat": "{{risk_level}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Count"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "type": "graph",
+        "title": "Request Duration (p95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(siem_request_duration_seconds_bucket[1m]))",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Duration"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "type": "stat",
+        "title": "Total Logs Analyzed",
+        "targets": [
+          {
+            "expr": "sum(siem_logs_analyzed_total)"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}
