@@ -1,0 +1,49 @@
+{
+  "training_time_sec": 3.501939058303833,
+  "baseline": {
+    "accuracy": 0.9523809523809523,
+    "f1_score": 0.0
+  },
+  "validation": {
+    "dataset": "Validation",
+    "n_samples": 2100,
+    "accuracy": 0.9971428571428571,
+    "precision": 0.9433962264150944,
+    "recall": 1.0,
+    "f1_score": 0.970873786407767,
+    "roc_auc": 0.999985,
+    "pr_auc": 0.9997024458328185,
+    "confusion_matrix": {
+      "tn": 1994,
+      "fp": 6,
+      "fn": 0,
+      "tp": 100
+    },
+    "fpr": 0.003,
+    "fnr": 0.0,
+    "evaluation_time_sec": 10.39753007888794
+  },
+  "test": {
+    "dataset": "Test",
+    "n_samples": 2100,
+    "accuracy": 0.9966666666666667,
+    "precision": 0.9345794392523364,
+    "recall": 1.0,
+    "f1_score": 0.966183574879227,
+    "roc_auc": 0.99995,
+    "pr_auc": 0.9989900402432595,
+    "confusion_matrix": {
+      "tn": 1993,
+      "fp": 7,
+      "fn": 0,
+      "tp": 100
+    },
+    "fpr": 0.0035,
+    "fnr": 0.0,
+    "evaluation_time_sec": 10.636226654052734
+  },
+  "improvement": {
+    "accuracy": 0.04428571428571437,
+    "f1_score": 0.966183574879227
+  }
+}

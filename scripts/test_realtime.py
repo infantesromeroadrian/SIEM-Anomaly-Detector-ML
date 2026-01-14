@@ -13,11 +13,13 @@ from pathlib import Path
 print("🛡️  SIEM Anomaly Detector - Real-time Testing")
 print("=" * 80)
 
-# Load model
-model_path = Path("models/ensemble_20260113_233849.joblib")
-if not model_path.exists():
-    print("❌ Model not found. Run train_simple_fixed.py first!")
+# Load model (find latest)
+model_files = sorted(Path("models").glob("ensemble_*.joblib"))
+if not model_files:
+    print("❌ No models found. Run train_ensemble_with_metrics.py first!")
     exit(1)
+
+model_path = model_files[-1]  # Latest model
 
 print(f"📦 Loading model: {model_path.name}")
 ensemble = joblib.load(model_path)
