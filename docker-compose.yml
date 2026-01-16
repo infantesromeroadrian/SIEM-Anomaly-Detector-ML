@@ -100,7 +100,6 @@ services:
     volumes:
       - ./models:/app/models
       - ./data:/app/data
-      - ./logs:/app/logs
     ports:
       - "${API_PORT:-8000}:8000"
     networks:
