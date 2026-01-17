@@ -1,0 +1,327 @@
+/* ML Flow Diagram - Interactive Pipeline Visualization */
+
+.ml-flow-diagram {
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.ml-flow-diagram h3 {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.diagram-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+/* Pipeline Flow Container */
+.pipeline-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* Flow Step Base */
+.flow-step {
+  background-color: var(--bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 600px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.flow-step:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.flow-step.active {
+  border-color: var(--accent);
+  background-color: rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+.step-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.step-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.step-desc {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Flow Arrows */
+.flow-arrow {
+  font-size: 2rem;
+  color: var(--accent);
+  margin: 0.5rem 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Ensemble Container (3 parallel models) */
+.ensemble-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ensemble-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ensemble-models {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  max-width: 1200px;
+  justify-content: center;
+}
+
+.model-step {
+  flex: 1;
+  max-width: 350px;
+  min-width: 250px;
+}
+
+/* Model-specific colors */
+.model-step.if {
+  border-color: #10b981;
+}
+
+.model-step.if:hover,
+.model-step.if.active {
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.model-step.if.active {
+  background-color: rgba(16, 185, 129, 0.15);
+}
+
+.model-step.dbscan {
+  border-color: #3b82f6;
+}
+
+.model-step.dbscan:hover,
+.model-step.dbscan.active {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.model-step.dbscan.active {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+.model-step.gmm {
+  border-color: #f59e0b;
+}
+
+.model-step.gmm:hover,
+.model-step.gmm.active {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.model-step.gmm.active {
+  background-color: rgba(245, 158, 11, 0.15);
+}
+
+/* Decision Step */
+.decision-step {
+  border-color: var(--danger);
+}
+
+.decision-step:hover,
+.decision-step.active {
+  border-color: var(--danger);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.decision-step.active {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+/* Detail Panel */
+.detail-panel {
+  background-color: var(--bg-tertiary);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.detail-icon {
+  font-size: 2rem;
+}
+
+.detail-header h4 {
+  font-size: 1.3rem;
+  color: var(--text-primary);
+  margin: 0;
+  flex: 1;
+}
+
+.close-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.detail-description {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.detail-list {
+  list-style: none;
+  padding: 0;
+}
+
+.detail-list li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.detail-list li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+/* Pipeline Metrics */
+.pipeline-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  background-color: var(--bg-primary);
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.metric-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .ensemble-models {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .model-step {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .flow-step {
+    max-width: 100%;
+  }
+
+  .step-icon {
+    font-size: 2rem;
+  }
+
+  .step-title {
+    font-size: 1rem;
+  }
+
+  .step-desc {
+    font-size: 0.85rem;
+  }
+
+  .pipeline-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}

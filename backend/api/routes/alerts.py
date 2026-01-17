@@ -13,7 +13,7 @@ import structlog
 from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
-from backend.api.routes.analysis import AnalysisResult, RiskLevel
+from backend.api.routes.analysis import AnalysisResult, RiskLevel, RecommendedAction
 
 logger = structlog.get_logger(__name__)
 
@@ -83,37 +83,72 @@ async def get_anomalies(
         min_risk_score=min_risk_score,
     )
 
-    # TODO: Query database for anomalies
-    # from backend.db.queries import get_anomalies_query
-    # anomalies = await get_anomalies_query(
-    #     since=datetime.now(timezone.utc) - timedelta(hours=hours),
-    #     min_risk_score=min_risk_score,
-    #     risk_level=risk_level,
-    #     limit=limit,
-    #     offset=offset
-    # )
+    # Query database for anomalies
+    from backend.db.database import get_db
+    from backend.db.models import Anomaly
+    from sqlalchemy import select, func
 
-    # Mock response
-    mock_anomaly = AnalysisResult(
-        log_id="abc123",
-        is_anomaly=True,
-        risk_score=0.87,
-        risk_level=RiskLevel.HIGH,
-        confidence="high",
-        features={"login_attempts_last_minute": 15},
-        reasons=["15 failed attempts in 1 minute"],
-        recommended_action="BLOCK_IP",
-        similar_anomalies=23,
-        model_scores={"isolation_forest": 0.92, "dbscan": 0.85, "gmm": 0.80},
-        processing_time_ms=45.2,
-        timestamp=datetime.now(timezone.utc),
-    )
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    async with get_db() as session:
+        # Count total matching anomalies
+        count_stmt = (
+            select(func.count())
+            .select_from(Anomaly)
+            .where(
+                Anomaly.created_at >= since,
+                Anomaly.risk_score >= min_risk_score,
+            )
+        )
+        if risk_level:
+            count_stmt = count_stmt.where(Anomaly.risk_level == risk_level.value)
+
+        total_result = await session.execute(count_stmt)
+        total = total_result.scalar() or 0
+
+        # Query anomalies with pagination
+        stmt = select(Anomaly).where(
+            Anomaly.created_at >= since,
+            Anomaly.risk_score >= min_risk_score,
+        )
+        if risk_level:
+            stmt = stmt.where(Anomaly.risk_level == risk_level.value)
+
+        stmt = stmt.order_by(Anomaly.created_at.desc()).limit(limit).offset(offset)
+
+        result = await session.execute(stmt)
+        db_anomalies = result.scalars().all()
+
+        # Convert to AnalysisResult format
+        anomalies = [
+            AnalysisResult(
+                log_id=str(anomaly.id),
+                is_anomaly=True,
+                risk_score=anomaly.risk_score,
+                risk_level=RiskLevel(anomaly.risk_level),
+                confidence=anomaly.confidence,
+                features=anomaly.features or {},
+                reasons=anomaly.reasons or [],
+                recommended_action=RecommendedAction(anomaly.recommended_action)
+                if anomaly.recommended_action
+                else RecommendedAction.MONITOR,
+                similar_anomalies=0,  # TODO: Calculate similar anomalies
+                model_scores={
+                    "isolation_forest": anomaly.isolation_forest_score or 0.0,
+                    "dbscan": anomaly.dbscan_score or 0.0,
+                    "gmm": anomaly.gmm_score or 0.0,
+                },
+                processing_time_ms=anomaly.processing_time_ms or 0.0,
+                timestamp=anomaly.created_at,
+            )
+            for anomaly in db_anomalies
+        ]
 
     return AnomaliesResponse(
-        total=1,
+        total=total,
         page=offset // limit + 1,
         page_size=limit,
-        anomalies=[mock_anomaly],
+        anomalies=anomalies,
     )
 
 
@@ -136,27 +171,54 @@ async def get_anomaly_detail(anomaly_id: str) -> AnomalyDetail:
     """
     logger.info("fetching_anomaly_detail", anomaly_id=anomaly_id)
 
-    # TODO: Query database
-    # anomaly_data = await get_anomaly_by_id(anomaly_id)
+    # Query database for specific anomaly
+    from backend.db.database import get_db
+    from backend.db.models import Anomaly
+    from sqlalchemy import select
+    from fastapi import HTTPException
 
-    # Mock response
-    mock_anomaly = AnalysisResult(
-        log_id=anomaly_id,
-        is_anomaly=True,
-        risk_score=0.87,
-        risk_level=RiskLevel.HIGH,
-        confidence="high",
-        features={"login_attempts_last_minute": 15},
-        reasons=["15 failed attempts in 1 minute"],
-        recommended_action="BLOCK_IP",
-        similar_anomalies=23,
-        model_scores={"isolation_forest": 0.92, "dbscan": 0.85, "gmm": 0.80},
-        processing_time_ms=45.2,
-        timestamp=datetime.now(timezone.utc),
-    )
+    async with get_db() as session:
+        stmt = select(Anomaly).where(Anomaly.id == int(anomaly_id))
+        result = await session.execute(stmt)
+        anomaly = result.scalar_one_or_none()
+
+        if not anomaly:
+            raise HTTPException(status_code=404, detail=f"Anomaly {anomaly_id} not found")
+
+        # Build context from anomaly data
+        context = {
+            "source_ip": anomaly.source_ip,
+            "username": anomaly.username,
+            "hostname": anomaly.hostname,
+            "event_type": anomaly.event_type,
+            "raw_log": anomaly.raw_log,
+            "log_source": anomaly.log_source,
+        }
+
+        # Convert to AnalysisResult
+        anomaly_result = AnalysisResult(
+            log_id=str(anomaly.id),
+            is_anomaly=True,
+            risk_score=anomaly.risk_score,
+            risk_level=RiskLevel(anomaly.risk_level),
+            confidence=anomaly.confidence,
+            features=anomaly.features or {},
+            reasons=anomaly.reasons or [],
+            recommended_action=RecommendedAction(anomaly.recommended_action)
+            if anomaly.recommended_action
+            else RecommendedAction.MONITOR,
+            similar_anomalies=0,
+            model_scores={
+                "isolation_forest": anomaly.isolation_forest_score or 0.0,
+                "dbscan": anomaly.dbscan_score or 0.0,
+                "gmm": anomaly.gmm_score or 0.0,
+            },
+            processing_time_ms=anomaly.processing_time_ms or 0.0,
+            timestamp=anomaly.created_at,
+        )
 
     return AnomalyDetail(
-        anomaly=mock_anomaly,
-        context={"source_ip": "192.168.1.100", "username": "admin"},
-        related_logs=["log_456", "log_789"],
+        anomaly=anomaly_result,
+        context=context,
+        related_logs=[],  # TODO: Query related logs based on IP/user
     )

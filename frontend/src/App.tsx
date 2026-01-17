@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Dashboard from './components/Dashboard'
 import ModelArchitecture from './components/ModelArchitecture'
+import MLFlowDiagram from './components/MLFlowDiagram'
 import AnomalyList from './components/AnomalyList'
 import { getStats, getHealth } from './services/api'
 import './App.css'
@@ -66,6 +67,7 @@ function App() {
 
         <Dashboard stats={stats} />
         <ModelArchitecture />
+        <MLFlowDiagram />
         <AnomalyList />
       </main>
 
