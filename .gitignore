@@ -169,6 +169,9 @@ $RECYCLE.BIN/
 site/
 docs/_build/
 
+# History folder (old documentation versions)
+history/*.md
+
 # ============================================================================
 # Temporary Files
 # ============================================================================
