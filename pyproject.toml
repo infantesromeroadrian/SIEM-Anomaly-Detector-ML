@@ -65,6 +65,7 @@ dependencies = [
     
     # HTTP Client (for webhooks)
     "httpx>=0.25.0",
+    "requests>=2.31.0",  # For scripts and integrations
     
     # Job Queue (optional, for async tasks)
     "celery>=5.3.0",

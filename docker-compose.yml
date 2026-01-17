@@ -181,6 +181,7 @@ services:
       api:
         condition: service_started
     environment:
+      SIEM_API_URL: http://api:8000/api/v1/logs/analyze
       LOG_RATE: ${LOG_RATE:-20}  # Logs per minute
       LOG_INTERVAL: ${LOG_INTERVAL:-3}  # Seconds between batches
       ANOMALY_RATE: ${ANOMALY_RATE:-0.15}  # 15% anomalies

@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import os
 import random
 import time
 from datetime import datetime, timedelta
@@ -25,7 +26,7 @@ import requests
 # ============================================================================
 # Configuration
 # ============================================================================
-API_URL = "http://localhost:8000/api/v1/logs/analyze"
+API_URL = os.getenv("SIEM_API_URL", "http://localhost:8000/api/v1/logs/analyze")
 
 # Realistic IP pools
 NORMAL_IPS = [
@@ -338,18 +339,33 @@ def main() -> None:
     print("=" * 80)
     print()
 
-    # Health check
-    try:
-        health = requests.get("http://localhost:8000/api/v1/health", timeout=5)
-        if health.status_code == 200:
-            print("✅ API is healthy\n")
-        else:
-            print("⚠️  API health check failed\n")
-    except Exception:
-        print("❌ ERROR: API is not responding. Start it with:")
-        print("   docker compose up -d")
-        print()
-        return
+    # Health check with retry
+    health_url = API_URL.replace("/logs/analyze", "/health")
+    max_retries = 30
+    retry_delay = 2
+
+    print(f"🔍 Waiting for API at {API_URL}...")
+    for attempt in range(1, max_retries + 1):
+        try:
+            health = requests.get(health_url, timeout=5)
+            if health.status_code == 200:
+                print(f"✅ API is healthy (attempt {attempt}/{max_retries})\n")
+                break
+            else:
+                print(
+                    f"⚠️  API returned status {health.status_code}, retrying... ({attempt}/{max_retries})"
+                )
+                time.sleep(retry_delay)
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"⏳ Waiting for API... ({attempt}/{max_retries})")
+                time.sleep(retry_delay)
+            else:
+                print(f"\n❌ ERROR: API is not responding after {max_retries} attempts.")
+                print("   Check that the API container is running:")
+                print("   docker logs siem-api")
+                print()
+                return
 
     # Statistics
     stats = {
