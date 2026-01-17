@@ -169,6 +169,28 @@ services:
       - siem-network
 
   # ============================================================================
+  # Log Generator (continuous log simulation for demo)
+  # ============================================================================
+  log-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siem-log-generator
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      LOG_RATE: ${LOG_RATE:-20}  # Logs per minute
+      LOG_INTERVAL: ${LOG_INTERVAL:-3}  # Seconds between batches
+      ANOMALY_RATE: ${ANOMALY_RATE:-0.15}  # 15% anomalies
+    networks:
+      - siem-network
+    command: python scripts/log_generator.py --rate ${LOG_RATE:-20} --interval ${LOG_INTERVAL:-3} --anomaly-rate ${ANOMALY_RATE:-0.15}
+    profiles:
+      - demo  # Only run when explicitly requested with --profile demo
+
+# ============================================================================
 # Networks
 # ============================================================================
 networks:
