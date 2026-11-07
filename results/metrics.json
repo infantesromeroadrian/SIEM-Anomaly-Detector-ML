@@ -1,0 +1,1016 @@
+{
+  "meta": {
+    "generated_utc": "2026-11-07T16:55:09+00:00",
+    "git_commit": "659cfb9709afba695df9e92eb3d29b174c0ece7a+dirty",
+    "python": "3.12.13",
+    "scikit_learn": "1.9.1",
+    "numpy": "2.5.4"
+  },
+  "dataset": {
+    "name": "AIT Log Data Set V2.0, scenario russellmitchell, intranet_server Apache access log",
+    "doi": "10.5281/zenodo.5789064",
+    "license": "CC-BY-NC-SA-4.0",
+    "manifest": {
+      "dataset.yaml": {
+        "sha256": "fba756deba1ccc5db4cb3e7674026c9d6aa8ba07ba5e601396abc0f81fb1a5e5",
+        "bytes": 97
+      },
+      "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.1": {
+        "sha256": "d43f56bbe787107208221453a42b1c3eb0619795071d4ef76183da34d3275e99",
+        "bytes": 149432
+      },
+      "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.2": {
+        "sha256": "4d3d700f50c6dde5295ebc57a00701b7c3049812c6f6709b3f809e36be362153",
+        "bytes": 1565078
+      },
+      "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.3": {
+        "sha256": "7e3144f380a12db73cd4c9f53f3cbb48b33a8757485533508b955d1a6a2203b3",
+        "bytes": 256115
+      },
+      "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.4": {
+        "sha256": "9efe17b91cd03b1a5a0032611eeda6be8a4ea8ceb71b77a58abd61e209492352",
+        "bytes": 289482
+      },
+      "labels/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.2": {
+        "sha256": "ab6a834e2f9b8321cb7045cd78e0d88eea851a0f4b5231827f16e87ca7286154",
+        "bytes": 1637968
+      },
+      "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.1": {
+        "sha256": "5a0583e5250373baf1fab1fe8d2e1888ee0f1c2f979088bf2d3a24db288f8864",
+        "bytes": 2753267
+      },
+      "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.2": {
+        "sha256": "a15680fc1e9155a5f06b63ea7be036bd20b06cbec66b6f56129a81062cfab48e",
+        "bytes": 2597877
+      },
+      "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.3": {
+        "sha256": "d5a265a380f48f6c23e3d16fd0678ef9423cbe2f9d5887fa5e9515df31eed1c1",
+        "bytes": 2334679
+      },
+      "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.4": {
+        "sha256": "60bbe3f9e66c6c8657a2a377a633a549c77078668f08364806ee7b26419723f7",
+        "bytes": 2400593
+      },
+      "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.1": {
+        "sha256": "b87709fc6b7385ae12324688892f5a7ded0f9967951e4297862c9b8b0d008294",
+        "bytes": 1281400
+      },
+      "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.2": {
+        "sha256": "52844d158f359d2c74fd6a3eb5d6334e9d7b6cbce6fb01ebf4e12701e92c22f7",
+        "bytes": 1656416
+      },
+      "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.3": {
+        "sha256": "3594e58d0d58eadeadff4961065838a5484965eff4247b5a75211209f035f334",
+        "bytes": 1850740
+      },
+      "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.4": {
+        "sha256": "34fa3568b528da7b8387c48b3fcfadddb38b2c1b6ea2505e18a6b9f92208fef9",
+        "bytes": 1789416
+      }
+    },
+    "unparsed_lines": 54,
+    "n_train": 2014,
+    "n_val": 817,
+    "n_test": 8299,
+    "n_test_attack": 7695,
+    "test_prevalence": 0.9272201470056634,
+    "base_rate": {
+      "train": 0.0,
+      "val": 0.0,
+      "test": 0.9272201470056634
+    },
+    "n_other_hosts_benign_test": 15003,
+    "other_hosts_unparsed_lines": 0,
+    "other_hosts": "webserver mail.smith + cloud.smith vhosts (unlabelled, benign by dataset convention)"
+  },
+  "protocol": {
+    "train_end_utc": "2022-01-23T00:00:00+00:00",
+    "val_end_utc": "2022-01-24T00:00:00+00:00",
+    "threshold_quantile": 0.99,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "features": [
+      "hour_of_day",
+      "day_of_week",
+      "is_weekend",
+      "is_business_hours",
+      "login_attempts_per_minute",
+      "requests_per_second",
+      "unique_ips_last_hour",
+      "unique_endpoints_accessed",
+      "failed_auth_rate",
+      "error_rate_4xx",
+      "error_rate_5xx",
+      "status_class",
+      "is_known_ip",
+      "bytes_transferred",
+      "time_since_last_activity_sec",
+      "path_length",
+      "special_char_ratio",
+      "payload_entropy",
+      "is_privileged_user",
+      "is_sensitive_endpoint",
+      "is_known_user_agent"
+    ],
+    "variants": {
+      "all_features": {
+        "dropped": [],
+        "post_hoc": false
+      },
+      "no_calendar_features": {
+        "dropped": [
+          "day_of_week",
+          "is_weekend"
+        ],
+        "post_hoc": true
+      }
+    }
+  },
+  "results": {
+    "all_features": {
+      "rule_requests_per_60s": {
+        "n_seeds": 1,
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "recall": {
+          "mean": 0.9975308641975309,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.9987639060568604,
+          "std": 0.0
+        },
+        "fpr": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pr_auc": {
+          "mean": 0.9999438699868223,
+          "std": 0.0
+        },
+        "roc_auc": {
+          "mean": 0.9993207509821895,
+          "std": 0.0
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9984311967727476,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.0,
+            0.16818436536845052
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.5571552356195427,
+          "std": 0.0
+        }
+      },
+      "isolation_forest": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9987274265702683,
+          "std": 0.00047357312690693567
+        },
+        "recall": {
+          "mean": 0.9992462638076672,
+          "std": 0.0006797503225794228
+        },
+        "f1": {
+          "mean": 0.9989865587945195,
+          "std": 0.0003528047158400637
+        },
+        "fpr": {
+          "mean": 0.016225165562913906,
+          "std": 0.006051545325330154
+        },
+        "pr_auc": {
+          "mean": 0.9999246415718686,
+          "std": 0.00014601792851204063
+        },
+        "roc_auc": {
+          "mean": 0.9995797563567983,
+          "std": 0.0007805719629168532
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.7166666666666667,
+            "recall_std": 0.17159383568311667
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9995517705064992,
+            "recall_std": 0.000584419758422485
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 0.9998744507219083,
+            "recall_std": 0.00025109855618330454
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.7789473684210527,
+          "recall_std": 0.16442630896645588,
+          "wilson95": [
+            0.5666528575973392,
+            0.9149246150840843
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.0001999600079984003,
+          "std": 0.000337242168650897
+        }
+      },
+      "combined_rule_or_isolation_forest": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9987795166840241,
+          "std": 0.0004750029151517159
+        },
+        "recall": {
+          "mean": 0.9994282001299546,
+          "std": 0.0004546551185064673
+        },
+        "f1": {
+          "mean": 0.9991036099669708,
+          "std": 0.0002706681605723195
+        },
+        "fpr": {
+          "mean": 0.01556291390728477,
+          "std": 0.006069636682060715
+        },
+        "pr_auc": {
+          "mean": 0.9997372976474986,
+          "std": 0.00039271130466041415
+        },
+        "roc_auc": {
+          "mean": 0.9983091497446093,
+          "std": 0.0024980807261444087
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.7166666666666667,
+            "recall_std": 0.17159383568311667
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9997758852532497,
+            "recall_std": 0.0003471970727214017
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.7684210526315789,
+          "recall_std": 0.18413532299511476,
+          "wilson95": [
+            0.5666528575973392,
+            0.9149246150840843
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.5572085582883424,
+          "std": 6.530666514120093e-05
+        }
+      },
+      "ensemble_legacy_weights_0.5_0.3_0.2": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9987274265702683,
+          "std": 0.00047357312690693567
+        },
+        "recall": {
+          "mean": 0.9992462638076672,
+          "std": 0.0006797503225794228
+        },
+        "f1": {
+          "mean": 0.9989865587945195,
+          "std": 0.0003528047158400637
+        },
+        "fpr": {
+          "mean": 0.016225165562913906,
+          "std": 0.006051545325330154
+        },
+        "pr_auc": {
+          "mean": 0.9999246415718686,
+          "std": 0.00014601792851204063
+        },
+        "roc_auc": {
+          "mean": 0.9995797563567983,
+          "std": 0.0007805719629168532
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.7166666666666667,
+            "recall_std": 0.17159383568311667
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9995517705064992,
+            "recall_std": 0.000584419758422485
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 0.9998744507219083,
+            "recall_std": 0.00025109855618330454
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.7789473684210527,
+          "recall_std": 0.16442630896645588,
+          "wilson95": [
+            0.5666528575973392,
+            0.9149246150840843
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.0001999600079984003,
+          "std": 0.000337242168650897
+        }
+      },
+      "component_dbscan_only": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "recall": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "fpr": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pr_auc": {
+          "mean": 0.9272201470056632,
+          "std": 1.1102230246251565e-16
+        },
+        "roc_auc": {
+          "mean": 0.5,
+          "std": 0.0
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.0,
+            0.16818436536845052
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "component_gmm_only": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "recall": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "fpr": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pr_auc": {
+          "mean": 0.9272201470056632,
+          "std": 1.1102230246251565e-16
+        },
+        "roc_auc": {
+          "mean": 0.5,
+          "std": 0.0
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.0,
+            0.16818436536845052
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.0,
+          "std": 0.0
+        }
+      }
+    },
+    "no_calendar_features": {
+      "rule_requests_per_60s": {
+        "n_seeds": 1,
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "recall": {
+          "mean": 0.9975308641975309,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.9987639060568604,
+          "std": 0.0
+        },
+        "fpr": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pr_auc": {
+          "mean": 0.9999438699868223,
+          "std": 0.0
+        },
+        "roc_auc": {
+          "mean": 0.9993207509821895,
+          "std": 0.0
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9984311967727476,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.0,
+            0.16818436536845052
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.5571552356195427,
+          "std": 0.0
+        }
+      },
+      "isolation_forest": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9987536580454421,
+          "std": 0.00029113303544651465
+        },
+        "recall": {
+          "mean": 0.9996621182586095,
+          "std": 0.0001039636127355248
+        },
+        "f1": {
+          "mean": 0.9992076563927869,
+          "std": 0.00015026515346499837
+        },
+        "fpr": {
+          "mean": 0.015894039735099338,
+          "std": 0.0037168781987820605
+        },
+        "pr_auc": {
+          "mean": 0.999996537597837,
+          "std": 2.1924977700580564e-06
+        },
+        "roc_auc": {
+          "mean": 0.9999558929209214,
+          "std": 2.782531548532084e-05
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.85,
+            "recall_std": 0.06236095644623234
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.9998655311519498,
+            "recall_std": 0.00017929179740026056
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 0.99375,
+            "recall_std": 0.012499999999999999
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 0.95,
+            "recall_std": 0.09999999999999999
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.9052631578947368,
+          "recall_std": 0.03938586722919937,
+          "wilson95": [
+            0.686054495051583,
+            0.9706420586049034
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.00013330667199893355,
+          "std": 0.00013981321711259767
+        }
+      },
+      "combined_rule_or_isolation_forest": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9988056364894659,
+          "std": 0.0003003684637065198
+        },
+        "recall": {
+          "mean": 0.9997660818713451,
+          "std": 9.724905488688948e-05
+        },
+        "f1": {
+          "mean": 0.9992856139102152,
+          "std": 0.0001881717488788844
+        },
+        "fpr": {
+          "mean": 0.015231788079470199,
+          "std": 0.0038330585770828566
+        },
+        "pr_auc": {
+          "mean": 0.9999458941478769,
+          "std": 6.419408825488295e-05
+        },
+        "roc_auc": {
+          "mean": 0.9996442602704947,
+          "std": 0.0004114954755609005
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.85,
+            "recall_std": 0.06236095644623234
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.9052631578947368,
+          "recall_std": 0.03938586722919937,
+          "wilson95": [
+            0.686054495051583,
+            0.9706420586049034
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.5572752116243419,
+          "std": 0.0001484440275366478
+        }
+      },
+      "ensemble_legacy_weights_0.5_0.3_0.2": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9985984811716386,
+          "std": 0.00015110089827997058
+        },
+        "recall": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.9992987434573198,
+          "std": 7.566302440850862e-05
+        },
+        "fpr": {
+          "mean": 0.017880794701986755,
+          "std": 0.001930778773127582
+        },
+        "pr_auc": {
+          "mean": 0.999999935838533,
+          "std": 2.905087589564923e-08
+        },
+        "roc_auc": {
+          "mean": 0.9999991824053633,
+          "std": 3.701692105567008e-07
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 1.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.8318156346315496,
+            1.0
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.5795507565153637,
+          "std": 0.025032565254195283
+        }
+      },
+      "component_dbscan_only": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "recall": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "fpr": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pr_auc": {
+          "mean": 0.9703656998738965,
+          "std": 1.1102230246251565e-16
+        },
+        "roc_auc": {
+          "mean": 0.8054635761589404,
+          "std": 0.0
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 0.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 0.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.0,
+            0.16818436536845052
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "component_gmm_only": {
+        "n_seeds": 5,
+        "precision": {
+          "mean": 0.9989614570618958,
+          "std": 0.00011599354725099773
+        },
+        "recall": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.9994804553791277,
+          "std": 5.805705268832187e-05
+        },
+        "fpr": {
+          "mean": 0.013245033112582783,
+          "std": 0.001480839720198536
+        },
+        "pr_auc": {
+          "mean": 0.9996360767843404,
+          "std": 0.00019099331624623325
+        },
+        "roc_auc": {
+          "mean": 0.9976804409847283,
+          "std": 0.0012174774212868698
+        },
+        "recall_by_attack_type": {
+          "service_scan": {
+            "n": 12,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "dirb": {
+            "n": 4462,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "wpscan": {
+            "n": 3186,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_upload": {
+            "n": 3,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "webshell_cmd": {
+            "n": 32,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          },
+          "escalate": {
+            "n": 4,
+            "recall_mean": 1.0,
+            "recall_std": 0.0
+          }
+        },
+        "recall_low_rate_attacks": {
+          "n": 19,
+          "recall_mean": 1.0,
+          "recall_std": 0.0,
+          "wilson95": [
+            0.8318156346315496,
+            1.0
+          ]
+        },
+        "fpr_other_hosts": {
+          "n": 15003,
+          "mean": 0.8607745117643137,
+          "std": 0.014633490592704745
+        }
+      }
+    }
+  }
+}
