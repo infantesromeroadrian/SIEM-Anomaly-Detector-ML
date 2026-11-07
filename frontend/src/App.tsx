@@ -10,6 +10,7 @@ interface Stats {
   logs_analyzed_24h: number
   anomalies_detected_24h: number
   anomaly_rate: number
+  model_version: string
 }
 
 function App() {
