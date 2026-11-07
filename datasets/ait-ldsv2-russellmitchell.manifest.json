@@ -1,0 +1,63 @@
+{
+  "dataset": "AIT Log Data Set V2.0 / russellmitchell",
+  "zenodo": "https://doi.org/10.5281/zenodo.5789064",
+  "license": "CC-BY-NC-SA-4.0",
+  "files": {
+    "dataset.yaml": {
+      "sha256": "fba756deba1ccc5db4cb3e7674026c9d6aa8ba07ba5e601396abc0f81fb1a5e5",
+      "bytes": 97
+    },
+    "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.1": {
+      "sha256": "d43f56bbe787107208221453a42b1c3eb0619795071d4ef76183da34d3275e99",
+      "bytes": 149432
+    },
+    "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.2": {
+      "sha256": "4d3d700f50c6dde5295ebc57a00701b7c3049812c6f6709b3f809e36be362153",
+      "bytes": 1565078
+    },
+    "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.3": {
+      "sha256": "7e3144f380a12db73cd4c9f53f3cbb48b33a8757485533508b955d1a6a2203b3",
+      "bytes": 256115
+    },
+    "gather/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.4": {
+      "sha256": "9efe17b91cd03b1a5a0032611eeda6be8a4ea8ceb71b77a58abd61e209492352",
+      "bytes": 289482
+    },
+    "labels/intranet_server/logs/apache2/intranet.smith.russellmitchell.com-access.log.2": {
+      "sha256": "ab6a834e2f9b8321cb7045cd78e0d88eea851a0f4b5231827f16e87ca7286154",
+      "bytes": 1637968
+    },
+    "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.1": {
+      "sha256": "5a0583e5250373baf1fab1fe8d2e1888ee0f1c2f979088bf2d3a24db288f8864",
+      "bytes": 2753267
+    },
+    "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.2": {
+      "sha256": "a15680fc1e9155a5f06b63ea7be036bd20b06cbec66b6f56129a81062cfab48e",
+      "bytes": 2597877
+    },
+    "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.3": {
+      "sha256": "d5a265a380f48f6c23e3d16fd0678ef9423cbe2f9d5887fa5e9515df31eed1c1",
+      "bytes": 2334679
+    },
+    "gather/webserver/logs/apache2/mail.smith.russellmitchell.com-access.log.4": {
+      "sha256": "60bbe3f9e66c6c8657a2a377a633a549c77078668f08364806ee7b26419723f7",
+      "bytes": 2400593
+    },
+    "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.1": {
+      "sha256": "b87709fc6b7385ae12324688892f5a7ded0f9967951e4297862c9b8b0d008294",
+      "bytes": 1281400
+    },
+    "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.2": {
+      "sha256": "52844d158f359d2c74fd6a3eb5d6334e9d7b6cbce6fb01ebf4e12701e92c22f7",
+      "bytes": 1656416
+    },
+    "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.3": {
+      "sha256": "3594e58d0d58eadeadff4961065838a5484965eff4247b5a75211209f035f334",
+      "bytes": 1850740
+    },
+    "gather/webserver/logs/apache2/cloud.smith.russellmitchell.com-access.log.4": {
+      "sha256": "34fa3568b528da7b8387c48b3fcfadddb38b2c1b6ea2505e18a6b9f92208fef9",
+      "bytes": 1789416
+    }
+  }
+}

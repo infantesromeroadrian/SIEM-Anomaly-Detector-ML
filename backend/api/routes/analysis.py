@@ -43,18 +43,18 @@ def _generate_reasons(features: Any, important_features: list[tuple[str, float]]
         reasons.append("Weekend activity outside business hours")
 
     # Frequency anomalies
-    if features.login_attempts_per_minute > 5:  # noqa: PLR2004
+    if features.login_attempts_per_minute > 5:
         reasons.append(
             f"High login attempt rate ({features.login_attempts_per_minute:.1f}/min) - potential brute force"
         )
 
-    if features.requests_per_second > 10:  # noqa: PLR2004
+    if features.requests_per_second > 10:
         reasons.append(
             f"High request rate ({features.requests_per_second:.1f}/sec) - potential DDoS"
         )
 
     # Rate anomalies
-    if features.failed_auth_rate > 0.5:  # noqa: PLR2004
+    if features.failed_auth_rate > 0.5:
         reasons.append(f"High failed authentication rate ({features.failed_auth_rate:.0%})")
 
     if features.error_rate_5xx > 0:
@@ -64,14 +64,6 @@ def _generate_reasons(features: Any, important_features: list[tuple[str, float]]
     if not features.is_known_ip:
         reasons.append("Unknown/untrusted IP address")
 
-    if not features.is_known_country:
-        reasons.append("Request from unusual country")
-
-    if features.geographic_distance_km > 1000:  # noqa: PLR2004
-        reasons.append(
-            f"Large geographic distance from typical location ({features.geographic_distance_km:.0f} km)"
-        )
-
     # Context anomalies
     if features.is_privileged_user:
         reasons.append("Privileged user access (root/admin)")
@@ -80,10 +72,10 @@ def _generate_reasons(features: Any, important_features: list[tuple[str, float]]
         reasons.append("Access to sensitive endpoint")
 
     # Behavioral anomalies
-    if features.payload_entropy > 7.0:  # noqa: PLR2004
+    if features.payload_entropy > 7.0:
         reasons.append("High payload entropy - potential encrypted/malicious content")
 
-    if features.time_since_last_activity_sec > 86400:  # noqa: PLR2004
+    if features.time_since_last_activity_sec > 86400:
         reasons.append("First activity in >24 hours - dormant account activation")
 
     # Add top ML features if not already mentioned
@@ -171,7 +163,7 @@ class BatchAnalyzeRequest(BaseModel):
     @classmethod
     def validate_batch_size(cls, v: list[AnalyzeLogRequest]) -> list[AnalyzeLogRequest]:
         """Validate batch size limits."""
-        if len(v) > 1000:  # noqa: PLR2004
+        if len(v) > 1000:
             msg = "Batch size cannot exceed 1000 logs"
             raise ValueError(msg)
         return v
@@ -257,13 +249,13 @@ async def analyze_log(request: AnalyzeLogRequest) -> AnalysisResult:
         HTTPException: 422 if log cannot be parsed
         HTTPException: 500 if analysis fails
     """
-    import hashlib
     import time
+    import uuid
 
     start_time = time.time()
 
     # Generate log ID
-    log_id = hashlib.md5(f"{request.log_line}{time.time()}".encode()).hexdigest()[:12]
+    log_id = uuid.uuid4().hex[:12]
 
     logger.info(
         "log_analysis_started",
@@ -324,16 +316,9 @@ async def analyze_log(request: AnalyzeLogRequest) -> AnalysisResult:
         # ========================================================================
         # 2. Extract features
         # ========================================================================
-        from backend.ml.features import FeatureEngineer
+        from backend.ml.features import get_feature_engineer
 
-        feature_engineer = FeatureEngineer(
-            config={
-                "known_ips": ["127.0.0.1", "192.168.1.1", "10.0.0.1"],
-                "known_countries": ["US", "ES", "FR", "DE", "GB"],
-                "privileged_users": ["root", "admin", "administrator"],
-                "sensitive_endpoints": ["/admin", "/api/admin", "/wp-admin"],
-            }
-        )
+        feature_engineer = get_feature_engineer()
 
         features = await feature_engineer.extract(parsed_data)
 
@@ -343,6 +328,11 @@ async def analyze_log(request: AnalyzeLogRequest) -> AnalysisResult:
         from backend.ml.model_loader import get_model_loader
 
         model_loader = get_model_loader()
+        if not model_loader.is_loaded():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Model not loaded; train one first (make reproduce / make demo-model)",
+            )
         prediction = model_loader.predict(features, ensemble_weights=settings.ensemble_weights_list)
 
         # Extract scores
@@ -395,8 +385,8 @@ async def analyze_log(request: AnalyzeLogRequest) -> AnalysisResult:
         # 5. Save to database
         # ========================================================================
         try:
-            from backend.db.database import get_db
             from backend.db import crud
+            from backend.db.database import get_db
 
             async with get_db() as session:
                 # Save anomaly if detected
@@ -471,6 +461,9 @@ async def analyze_log(request: AnalyzeLogRequest) -> AnalysisResult:
             timestamp=datetime.now(timezone.utc),
         )
 
+    except HTTPException:
+        raise
+
     except ValueError as e:
         logger.error("log_parsing_failed", log_id=log_id, error=str(e))
         raise HTTPException(
@@ -544,6 +537,9 @@ async def analyze_batch(request: BatchAnalyzeRequest) -> BatchAnalysisResponse:
             results=results,
             processing_time_ms=round(processing_time, 2),
         )
+
+    except HTTPException:
+        raise
 
     except Exception as e:
         logger.exception("batch_analysis_failed")

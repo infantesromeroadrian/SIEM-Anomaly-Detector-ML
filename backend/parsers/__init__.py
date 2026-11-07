@@ -10,11 +10,11 @@ Supports multiple log formats:
 
 from __future__ import annotations
 
-from backend.parsers.base import LogParser, ParsedLog
-from backend.parsers.syslog import SyslogParser
-from backend.parsers.nginx import NginxParser
 from backend.parsers.auth import AuthLogParser
+from backend.parsers.base import LogParser, ParsedLog
 from backend.parsers.firewall import FirewallParser
+from backend.parsers.nginx import NginxParser
+from backend.parsers.syslog import SyslogParser
 
 __all__ = [
     "LogParser",

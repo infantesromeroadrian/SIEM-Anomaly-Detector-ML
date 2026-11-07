@@ -37,15 +37,14 @@ const steps: Record<string, StepInfo> = {
       'Temporal: hour_of_day, day_of_week, is_weekend',
       'Frequency: login_attempts_per_min, unique_ips',
       'Rates: failed_auth_rate, error_rate_5xx',
-      'Geographic: distance_km, is_known_country',
-      'Behavioral: bytes_transferred, session_duration',
+            'Behavioral: bytes_transferred, time_since_last_activity',
       'Context: is_privileged_user, is_sensitive_endpoint',
     ],
     icon: '⚙️',
   },
   isolation_forest: {
     title: 'Isolation Forest',
-    description: 'Detects outliers (50% weight)',
+    description: 'Detects outliers (default, 100% weight)',
     details: [
       'Algorithm: Randomly isolates data points',
       'Best for: External attacks, port scans, brute force',
@@ -56,7 +55,7 @@ const steps: Record<string, StepInfo> = {
   },
   dbscan: {
     title: 'DBSCAN',
-    description: 'Finds density-based clusters (30% weight)',
+    description: 'Opt-in, off by default (0% weight)',
     details: [
       'Algorithm: Density-Based Spatial Clustering',
       'Best for: Insider threats, coordinated attacks',
@@ -67,7 +66,7 @@ const steps: Record<string, StepInfo> = {
   },
   gmm: {
     title: 'Gaussian Mixture Model',
-    description: 'Statistical probability model (20% weight)',
+    description: 'Opt-in, off by default (0% weight)',
     details: [
       'Algorithm: Probabilistic generative model',
       'Best for: Statistical anomalies, rare events',
@@ -147,7 +146,7 @@ const MLFlowDiagram = () => {
 
         <div className="flow-arrow">↓</div>
 
-        {/* Step 4: Ensemble Models (3 parallel) */}
+        {/* Step 4: Ensemble Models (1 active, 2 opt-in) */}
         <div className="ensemble-container">
           <div className="ensemble-label">Ensemble (Parallel Execution)</div>
           <div className="ensemble-models">
@@ -235,20 +234,12 @@ const MLFlowDiagram = () => {
       {/* Performance Metrics */}
       <div className="pipeline-metrics">
         <div className="metric-item">
-          <span className="metric-label">Avg Latency:</span>
-          <span className="metric-value">~8ms</span>
-        </div>
-        <div className="metric-item">
-          <span className="metric-label">Throughput:</span>
-          <span className="metric-value">~125 logs/sec</span>
-        </div>
-        <div className="metric-item">
           <span className="metric-label">Features:</span>
-          <span className="metric-value">21 real-time</span>
+          <span className="metric-value">21 deterministic</span>
         </div>
         <div className="metric-item">
           <span className="metric-label">Models:</span>
-          <span className="metric-value">3 parallel</span>
+          <span className="metric-value">1 active, 2 opt-in</span>
         </div>
       </div>
     </div>

@@ -3,18 +3,16 @@ services:
   # PostgreSQL Database (with TimescaleDB extension)
   # ============================================================================
   postgres:
-    image: timescale/timescaledb:latest-pg15
+    image: timescale/timescaledb:2.17.2-pg15@sha256:d33b93c43b9db7a065f660847d4390d4a84ea1dd72395258aa8873f314de58c7
     container_name: siem-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-siem_db}
       POSTGRES_USER: ${POSTGRES_USER:-siem_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set; run ./scripts/init_env.sh}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siem_user}"]
       interval: 10s
@@ -28,18 +26,14 @@ services:
   # Redis Cache
   # ============================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
     container_name: siem-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping || exit 1"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,19 +66,18 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-siem_db}
       POSTGRES_USER: ${POSTGRES_USER:-siem_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set; run ./scripts/init_env.sh}
       
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: 0
       
       # ML Configuration
-      MODEL_PATH: ${MODEL_PATH:-./models/ensemble_20260113_233849.joblib}
+      MODEL_PATH: /app/models
       MODEL_CONTAMINATION: ${MODEL_CONTAMINATION:-0.03}
       MODEL_RETRAIN_INTERVAL_HOURS: ${MODEL_RETRAIN_INTERVAL_HOURS:-24}
-      ENSEMBLE_WEIGHTS: ${ENSEMBLE_WEIGHTS:-0.5,0.3,0.2}
+      ENSEMBLE_WEIGHTS: ${ENSEMBLE_WEIGHTS:-1.0,0.0,0.0}
       
       # Alerting
       ALERT_THRESHOLD_HIGH: ${ALERT_THRESHOLD_HIGH:-0.8}
@@ -92,25 +85,30 @@ services:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       
       # Security
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is not set; run ./scripts/init_env.sh}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       
       # Monitoring
       PROMETHEUS_ENABLED: ${PROMETHEUS_ENABLED:-true}
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
+      - models_data:/app/models
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     networks:
       - siem-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/live', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 
   # ============================================================================
   # Prometheus (metrics collection)
   # ============================================================================
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.55.1@sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3
     container_name: siem-prometheus
     restart: unless-stopped
     volumes:
@@ -122,7 +120,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - siem-network
 
@@ -130,21 +128,21 @@ services:
   # Grafana (visualization)
   # ============================================================================
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.3.0@sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3
     container_name: siem-grafana
     restart: unless-stopped
     depends_on:
       - prometheus
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is not set; run ./scripts/init_env.sh}
       GF_INSTALL_PLUGINS: grafana-clock-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - siem-network
 
@@ -152,7 +150,7 @@ services:
   # Frontend (React UI)
   # ============================================================================
   frontend:
-    image: node:18-alpine
+    image: node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
     container_name: siem-frontend
     restart: unless-stopped
     working_dir: /app
@@ -160,11 +158,11 @@ services:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5173:3000"
+      - "127.0.0.1:5173:3000"
     environment:
       VITE_API_URL: http://localhost:8000
       NODE_ENV: development
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 3000"
     networks:
       - siem-network
 
@@ -182,6 +180,7 @@ services:
         condition: service_started
     environment:
       SIEM_API_URL: http://api:8000/api/v1/logs/analyze
+      MODEL_PATH: /nonexistent  # skip the demo-model bootstrap in the entrypoint
       LOG_RATE: ${LOG_RATE:-20}  # Logs per minute
       LOG_INTERVAL: ${LOG_INTERVAL:-3}  # Seconds between batches
       ANOMALY_RATE: ${ANOMALY_RATE:-0.15}  # 15% anomalies
@@ -197,14 +196,13 @@ services:
 networks:
   siem-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 
 # ============================================================================
 # Volumes
 # ============================================================================
 volumes:
+  models_data:
+    driver: local
   postgres_data:
     driver: local
   redis_data:

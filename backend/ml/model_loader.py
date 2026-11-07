@@ -19,7 +19,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 
 from backend.config import settings
-from backend.ml.features import FeatureEngineer, LogFeatures
+from backend.ml.features import FEATURE_NAMES, FeatureEngineer, LogFeatures
+from backend.ml.scoring import score_arrays
 
 logger = structlog.get_logger(__name__)
 
@@ -50,6 +51,7 @@ class ModelLoader:
             self.gmm: GaussianMixture | None = None
             self.scaler: StandardScaler | None = None
             self.metadata: dict[str, Any] = {}
+            self.feature_cols: list[int] | None = None
             self.feature_engineer: FeatureEngineer | None = None
 
             # DBSCAN training data for prediction
@@ -70,6 +72,12 @@ class ModelLoader:
             ValueError: If model file is corrupted
         """
         model_path = Path(model_path)
+        if model_path.is_dir():
+            candidates = sorted(model_path.glob("ensemble_*.joblib"))
+            if not candidates:
+                msg = f"No ensemble_*.joblib found in {model_path}"
+                raise FileNotFoundError(msg)
+            model_path = candidates[-1]
         if not model_path.exists():
             msg = f"Model file not found: {model_path}"
             raise FileNotFoundError(msg)
@@ -86,6 +94,8 @@ class ModelLoader:
             self.gmm = ensemble["gmm"]
             self.scaler = ensemble["scaler"]
             self.metadata = ensemble.get("metadata", {})
+            self.feature_cols: list[int] | None = self.metadata.get("feature_columns")
+            self._apply_serving_metadata()
             self.model_path = model_path
 
             # Load DBSCAN training data for prediction
@@ -106,13 +116,19 @@ class ModelLoader:
             logger.exception("model_load_failed", path=str(model_path))
             raise ValueError(f"Failed to load model: {e}") from e
 
+    def _apply_serving_metadata(self) -> None:
+        """Register the training-time IP allow-list with the process-wide feature engineer."""
+        known = self.metadata.get("known_ips")
+        if known:
+            from backend.ml.features import get_feature_engineer
+
+            get_feature_engineer().known_ips |= set(known)
+
     def is_loaded(self) -> bool:
         """Check if model is loaded."""
         return all(
             [
                 self.isolation_forest is not None,
-                self.dbscan is not None,
-                self.gmm is not None,
                 self.scaler is not None,
             ]
         )
@@ -127,7 +143,7 @@ class ModelLoader:
 
         Args:
             features: Extracted log features
-            ensemble_weights: Custom weights [IF, DBSCAN, GMM]. Defaults to [0.5, 0.3, 0.2]
+            ensemble_weights: Custom weights [IF, DBSCAN, GMM]. Defaults to [1.0, 0.0, 0.0]
 
         Returns:
             Dictionary with:
@@ -146,103 +162,33 @@ class ModelLoader:
             raise RuntimeError(msg)
 
         if ensemble_weights is None:
-            ensemble_weights = [0.5, 0.3, 0.2]
+            ensemble_weights = [1.0, 0.0, 0.0]
 
         start_time = time.time()
-
-        # Convert features to array
         X = features.to_array().reshape(1, -1)
-        X_scaled = self.scaler.transform(X)  # type: ignore[union-attr]
-
-        # ========================================================================
-        # Isolation Forest Score
-        # ========================================================================
-        # decision_function: negative for outliers, positive for inliers
-        # We convert to 0-1 scale where 1 = anomaly
-        if_decision = self.isolation_forest.decision_function(X)[0]  # type: ignore[union-attr]
-
-        # Sigmoid transformation: more negative → higher score
-        if_score = 1.0 / (1.0 + np.exp(if_decision * 10))
-
-        # ========================================================================
-        # GMM Score
-        # ========================================================================
-        # score_samples: log-likelihood (higher = more likely)
-        # We convert to anomaly score (lower likelihood = higher anomaly)
-        gmm_log_likelihood = self.gmm.score_samples(X_scaled)[0]  # type: ignore[union-attr]
-
-        # Normalize: typical range is -20 to 0
-        # Lower likelihood → higher score
-        gmm_score = 1.0 / (1.0 + np.exp((gmm_log_likelihood + 10) * 0.5))
-
-        # ========================================================================
-        # DBSCAN Score
-        # ========================================================================
-        # DBSCAN doesn't have predict(), so we find nearest cluster centroid
-        dbscan_prediction = self._predict_dbscan(X_scaled[0])
-
-        if dbscan_prediction == -1:
-            # Outlier - far from all clusters
-            dbscan_score = 0.9
-        else:
-            # Part of cluster - calculate distance to centroid
-            if dbscan_prediction in self._cluster_centroids:
-                centroid = self._cluster_centroids[dbscan_prediction]
-                distance = np.linalg.norm(X_scaled[0] - centroid)
-                # Normalize distance to [0, 1]
-                dbscan_score = min(distance / 5.0, 1.0)
-            else:
-                # Cluster not found (shouldn't happen, but handle gracefully)
-                dbscan_score = 0.5
-
-        # ========================================================================
-        # Ensemble Aggregation
-        # ========================================================================
-        final_score = (
-            ensemble_weights[0] * if_score
-            + ensemble_weights[1] * dbscan_score
-            + ensemble_weights[2] * gmm_score
+        names = FEATURE_NAMES
+        if getattr(self, "feature_cols", None):
+            X = X[:, self.feature_cols]
+            names = tuple(FEATURE_NAMES[i] for i in self.feature_cols)
+        scores = score_arrays(
+            X,
+            isolation_forest=self.isolation_forest,
+            dbscan=self.dbscan,
+            gmm=self.gmm,
+            scaler=self.scaler,
+            centroids=self._cluster_centroids,
+            weights=ensemble_weights,
         )
-
-        # Determine if anomaly using configurable threshold
-        # Default threshold: 0.6 (medium risk)
-        # Can be changed via ALERT_THRESHOLD_MEDIUM env var
+        if_score = float(scores["isolation_forest"][0])
+        dbscan_score = float(scores["dbscan"][0])
+        gmm_score = float(scores["gmm"][0])
+        final_score = float(scores["risk"][0])
         is_anomaly = final_score >= settings.alert_threshold_medium
 
-        # ========================================================================
-        # Feature Importance (simplified)
-        # ========================================================================
-        # For Isolation Forest, we can approximate feature importance
-        # by checking which features deviate most from mean
-        feature_names = [
-            "hour_of_day",
-            "day_of_week",
-            "is_weekend",
-            "is_business_hours",
-            "login_attempts_per_minute",
-            "requests_per_second",
-            "unique_ips_last_hour",
-            "unique_endpoints_accessed",
-            "failed_auth_rate",
-            "error_rate_4xx",
-            "error_rate_5xx",
-            "geographic_distance_km",
-            "is_known_country",
-            "is_known_ip",
-            "bytes_transferred_log",
-            "time_since_last_activity_sec",
-            "session_duration_sec",
-            "payload_entropy",
-            "is_privileged_user",
-            "is_sensitive_endpoint",
-            "is_known_user_agent",
-        ]
-
-        # Get feature deviations (absolute z-scores)
-        feature_deviations = np.abs(X_scaled[0])
-        top_indices = np.argsort(feature_deviations)[-5:][::-1]  # Top 5
-
-        important_features = [(feature_names[i], float(feature_deviations[i])) for i in top_indices]
+        # Feature attribution: absolute z-scores (a heuristic, not SHAP)
+        feature_deviations = np.abs(self.scaler.transform(X)[0])  # type: ignore[union-attr]
+        top_indices = np.argsort(feature_deviations)[-5:][::-1]
+        important_features = [(names[i], float(feature_deviations[i])) for i in top_indices]
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -256,41 +202,6 @@ class ModelLoader:
             "processing_time_ms": float(processing_time),
             "model_version": self.metadata.get("training_date", "unknown"),
         }
-
-    def _predict_dbscan(self, X_point: np.ndarray) -> int:
-        """
-        Predict DBSCAN cluster for new point without refitting.
-
-        Finds nearest cluster centroid and checks if point is within eps radius.
-
-        Args:
-            X_point: Single scaled data point
-
-        Returns:
-            Cluster label (-1 for outlier, >= 0 for cluster)
-        """
-        if not self._cluster_centroids:
-            # No clusters available, classify as outlier
-            return -1
-
-        # Find nearest cluster centroid
-        min_distance = float("inf")
-        nearest_cluster = -1
-
-        for label, centroid in self._cluster_centroids.items():
-            distance = np.linalg.norm(X_point - centroid)
-            if distance < min_distance:
-                min_distance = distance
-                nearest_cluster = label
-
-        # Check if point is within eps radius (use 2*eps for lenient threshold)
-        if self.dbscan is not None:
-            eps_threshold = self.dbscan.eps * 2.0
-            if min_distance <= eps_threshold:
-                return nearest_cluster
-
-        # Too far from any cluster → outlier
-        return -1
 
 
 # Global singleton instance

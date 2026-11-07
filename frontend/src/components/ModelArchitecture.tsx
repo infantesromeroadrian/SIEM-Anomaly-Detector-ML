@@ -1,35 +1,8 @@
 import { useState, useEffect } from 'react'
 import './ModelArchitecture.css'
 
-interface ModelMetrics {
-  f1_score: number
-  precision: number
-  recall: number
-  accuracy: number
-  roc_auc: number
-  confusion_matrix: {
-    tn: number
-    fp: number
-    fn: number
-    tp: number
-  }
-  fpr: number
-  fnr: number
-}
-
 interface ModelStats {
   model_version: string
-  training_time_sec: number
-  test_metrics: ModelMetrics
-  validation_metrics: ModelMetrics
-  baseline: {
-    f1_score: number
-    accuracy: number
-  }
-  improvement: {
-    f1_score: number
-    accuracy: number
-  }
 }
 
 function ModelArchitecture() {
@@ -43,54 +16,9 @@ function ModelArchitecture() {
 
   const fetchModelStats = async () => {
     try {
-      // En producción, esto vendría del API
-      // GET /api/v1/model/stats
       const response = await fetch('/api/v1/stats')
       const data = await response.json()
-      
-      // Por ahora usamos datos hardcodeados basados en el training
-      setModelStats({
-        model_version: data.model_version || 'v1.0.0',
-        training_time_sec: 3.5,
-        test_metrics: {
-          f1_score: 0.966,
-          precision: 0.935,
-          recall: 1.000,
-          accuracy: 0.997,
-          roc_auc: 1.000,
-          confusion_matrix: {
-            tn: 1993,
-            fp: 7,
-            fn: 0,
-            tp: 100
-          },
-          fpr: 0.0035,
-          fnr: 0.0
-        },
-        validation_metrics: {
-          f1_score: 0.971,
-          precision: 0.943,
-          recall: 1.000,
-          accuracy: 0.997,
-          roc_auc: 1.000,
-          confusion_matrix: {
-            tn: 1994,
-            fp: 6,
-            fn: 0,
-            tp: 100
-          },
-          fpr: 0.003,
-          fnr: 0.0
-        },
-        baseline: {
-          f1_score: 0.0,
-          accuracy: 0.952
-        },
-        improvement: {
-          f1_score: 0.966,
-          accuracy: 0.044
-        }
-      })
+      setModelStats({ model_version: data.model_version || 'unknown' })
       setLoading(false)
     } catch (error) {
       console.error('Failed to fetch model stats:', error)
@@ -113,7 +41,7 @@ function ModelArchitecture() {
         <h2 className="section-title">🤖 ML Model Architecture</h2>
         <div className="model-version">
           <span className="version-badge">{modelStats?.model_version}</span>
-          <span className="trained-badge">Trained & Production Ready</span>
+          <span className="trained-badge">Research prototype</span>
         </div>
       </div>
 
@@ -145,16 +73,16 @@ function ModelArchitecture() {
       </div>
 
       <div className="tab-content">
-        {activeTab === 'overview' && <OverviewTab stats={modelStats} />}
+        {activeTab === 'overview' && <OverviewTab />}
         {activeTab === 'architecture' && <ArchitectureTab />}
-        {activeTab === 'metrics' && <MetricsTab stats={modelStats} />}
+        {activeTab === 'metrics' && <MetricsTab />}
         {activeTab === 'features' && <FeaturesTab />}
       </div>
     </section>
   )
 }
 
-function OverviewTab({ stats }: { stats: ModelStats | null }) {
+function OverviewTab() {
   return (
     <div className="overview-tab">
       <div className="overview-grid">
@@ -168,47 +96,12 @@ function OverviewTab({ stats }: { stats: ModelStats | null }) {
         </div>
 
         <div className="overview-card">
-          <h3>⚡ Performance</h3>
-          <div className="metrics-mini">
-            <div className="metric-mini">
-              <span className="metric-label">F1-Score</span>
-              <span className="metric-value success">{((stats?.test_metrics.f1_score || 0) * 100).toFixed(1)}%</span>
-            </div>
-            <div className="metric-mini">
-              <span className="metric-label">Recall</span>
-              <span className="metric-value success">{((stats?.test_metrics.recall || 0) * 100).toFixed(1)}%</span>
-            </div>
-            <div className="metric-mini">
-              <span className="metric-label">FPR</span>
-              <span className="metric-value warning">{((stats?.test_metrics.fpr || 0) * 100).toFixed(2)}%</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="overview-card">
-          <h3>🚀 Training</h3>
-          <div className="training-info">
-            <p><strong>Time:</strong> {stats?.training_time_sec.toFixed(1)}s</p>
-            <p><strong>Samples:</strong> 10,500 (95% normal, 5% anomalies)</p>
-            <p><strong>Features:</strong> 21 engineered features</p>
-          </div>
-        </div>
-
-        <div className="overview-card">
-          <h3>📊 vs Baseline</h3>
-          <div className="comparison">
-            <div className="comparison-item">
-              <span>Baseline (Dummy):</span>
-              <span className="bad">F1 = 0.0%</span>
-            </div>
-            <div className="comparison-item">
-              <span>Our Ensemble:</span>
-              <span className="good">F1 = 96.6%</span>
-            </div>
-            <div className="improvement">
-              <span className="improvement-badge">+96.6 points improvement</span>
-            </div>
-          </div>
+          <h3>📏 Evaluation</h3>
+          <p className="description">
+            Metrics are not hardcoded in this UI. They are produced by <code>make reproduce</code>{' '}
+            on a public labelled dataset and written to <code>results/metrics.json</code>{' '}
+            and <code>results/report.md</code>.
+          </p>
         </div>
       </div>
 
@@ -278,12 +171,11 @@ function ArchitectureTab() {
         <div className="pipeline-step">
           <div className="step-box features">
             <h4>🔧 FEATURE ENGINEERING</h4>
-            <p>Calculate 21 Features</p>
+            <p>Calculate 21 deterministic features</p>
             <div className="feature-categories">
               <span className="feature-cat">⏰ Temporal (4)</span>
               <span className="feature-cat">📊 Frequency (4)</span>
               <span className="feature-cat">📈 Rates (3)</span>
-              <span className="feature-cat">🌍 Geographic (3)</span>
               <span className="feature-cat">🎭 Behavioral (4)</span>
               <span className="feature-cat">🔐 Context (3)</span>
             </div>
@@ -297,7 +189,7 @@ function ArchitectureTab() {
             <div className="models-grid">
               <div className="model-card if">
                 <h5>Isolation Forest</h5>
-                <p className="weight">Weight: 50%</p>
+                <p className="weight">Weight: 100% (default)</p>
                 <p className="description">Fast outlier detection via tree isolation</p>
                 <div className="model-params">
                   <span>n_estimators: 100</span>
@@ -307,7 +199,7 @@ function ArchitectureTab() {
 
               <div className="model-card dbscan">
                 <h5>DBSCAN</h5>
-                <p className="weight">Weight: 30%</p>
+                <p className="weight">Weight: 0% (opt-in)</p>
                 <p className="description">Density-based clustering anomaly detection</p>
                 <div className="model-params">
                   <span>eps: 5.0</span>
@@ -317,7 +209,7 @@ function ArchitectureTab() {
 
               <div className="model-card gmm">
                 <h5>Gaussian Mixture</h5>
-                <p className="weight">Weight: 20%</p>
+                <p className="weight">Weight: 0% (opt-in)</p>
                 <p className="description">Probabilistic anomaly scoring</p>
                 <div className="model-params">
                   <span>n_components: 3</span>
@@ -393,201 +285,15 @@ function ArchitectureTab() {
   )
 }
 
-function MetricsTab({ stats }: { stats: ModelStats | null }) {
-  if (!stats) return <div>Loading metrics...</div>
-
-  const { test_metrics, validation_metrics } = stats
-
+function MetricsTab() {
   return (
     <div className="metrics-tab">
       <h3>📈 Model Performance Metrics</h3>
-
-      <div className="metrics-comparison">
-        <div className="metrics-set">
-          <h4>Validation Set (20%)</h4>
-          <div className="metrics-grid">
-            <MetricCard 
-              label="F1-Score" 
-              value={validation_metrics.f1_score} 
-              format="percent"
-              description="Harmonic mean of precision and recall"
-            />
-            <MetricCard 
-              label="Precision" 
-              value={validation_metrics.precision} 
-              format="percent"
-              description="% of detected anomalies that are correct"
-            />
-            <MetricCard 
-              label="Recall" 
-              value={validation_metrics.recall} 
-              format="percent"
-              description="% of actual anomalies detected"
-            />
-            <MetricCard 
-              label="Accuracy" 
-              value={validation_metrics.accuracy} 
-              format="percent"
-              description="Overall classification accuracy"
-            />
-            <MetricCard 
-              label="ROC-AUC" 
-              value={validation_metrics.roc_auc} 
-              format="percent"
-              description="Area under ROC curve"
-            />
-            <MetricCard 
-              label="FPR" 
-              value={validation_metrics.fpr} 
-              format="percent"
-              description="False Positive Rate (lower is better)"
-              warning
-            />
-          </div>
-        </div>
-
-        <div className="metrics-set">
-          <h4>Test Set (20%) - Final Evaluation</h4>
-          <div className="metrics-grid">
-            <MetricCard 
-              label="F1-Score" 
-              value={test_metrics.f1_score} 
-              format="percent"
-              description="Harmonic mean of precision and recall"
-            />
-            <MetricCard 
-              label="Precision" 
-              value={test_metrics.precision} 
-              format="percent"
-              description="% of detected anomalies that are correct"
-            />
-            <MetricCard 
-              label="Recall" 
-              value={test_metrics.recall} 
-              format="percent"
-              description="% of actual anomalies detected"
-            />
-            <MetricCard 
-              label="Accuracy" 
-              value={test_metrics.accuracy} 
-              format="percent"
-              description="Overall classification accuracy"
-            />
-            <MetricCard 
-              label="ROC-AUC" 
-              value={test_metrics.roc_auc} 
-              format="percent"
-              description="Area under ROC curve"
-            />
-            <MetricCard 
-              label="FPR" 
-              value={test_metrics.fpr} 
-              format="percent"
-              description="False Positive Rate (lower is better)"
-              warning
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="confusion-matrix-section">
-        <h4>🎯 Confusion Matrix (Test Set)</h4>
-        <div className="confusion-matrix">
-          <div className="matrix-grid">
-            <div className="matrix-label">Predicted →</div>
-            <div className="matrix-label">Normal</div>
-            <div className="matrix-label">Anomaly</div>
-            
-            <div className="matrix-label vertical">
-              <span>Actual</span>
-              <span>↓</span>
-            </div>
-            
-            <div className="matrix-cell tn">
-              <div className="cell-label">True Negative</div>
-              <div className="cell-value">{test_metrics.confusion_matrix.tn}</div>
-              <div className="cell-desc">Correct normal</div>
-            </div>
-            
-            <div className="matrix-cell fp">
-              <div className="cell-label">False Positive</div>
-              <div className="cell-value">{test_metrics.confusion_matrix.fp}</div>
-              <div className="cell-desc">False alarms</div>
-            </div>
-            
-            <div className="matrix-label">Normal</div>
-            <div className="matrix-label">Anomaly</div>
-            
-            <div className="matrix-cell fn">
-              <div className="cell-label">False Negative</div>
-              <div className="cell-value">{test_metrics.confusion_matrix.fn}</div>
-              <div className="cell-desc">Missed threats</div>
-            </div>
-            
-            <div className="matrix-cell tp">
-              <div className="cell-label">True Positive</div>
-              <div className="cell-value">{test_metrics.confusion_matrix.tp}</div>
-              <div className="cell-desc">Correct anomalies</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="matrix-insights">
-          <div className="insight success">
-            <strong>✅ Perfect Recall:</strong> Detected all {test_metrics.confusion_matrix.tp} anomalies (0 false negatives)
-          </div>
-          <div className="insight warning">
-            <strong>⚠️ Low FPR:</strong> Only {test_metrics.confusion_matrix.fp} false positives out of {test_metrics.confusion_matrix.tn + test_metrics.confusion_matrix.fp} normal logs ({(test_metrics.fpr * 100).toFixed(2)}%)
-          </div>
-        </div>
-      </div>
-
-      <div className="training-details">
-        <h4>📊 Training Details</h4>
-        <div className="training-grid">
-          <div className="training-item">
-            <span className="training-label">Data Split:</span>
-            <span className="training-value">60% Train / 20% Val / 20% Test</span>
-          </div>
-          <div className="training-item">
-            <span className="training-label">Training Time:</span>
-            <span className="training-value">{stats.training_time_sec.toFixed(1)}s</span>
-          </div>
-          <div className="training-item">
-            <span className="training-label">Data Leakage:</span>
-            <span className="training-value success">✅ None Detected</span>
-          </div>
-          <div className="training-item">
-            <span className="training-label">Stratification:</span>
-            <span className="training-value">✅ Class-balanced splits</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-interface MetricCardProps {
-  label: string
-  value: number
-  format: 'percent' | 'raw'
-  description: string
-  warning?: boolean
-}
-
-function MetricCard({ label, value, format, description, warning }: MetricCardProps) {
-  const displayValue = format === 'percent' ? `${(value * 100).toFixed(1)}%` : value.toFixed(3)
-  const colorClass = warning 
-    ? (value < 0.01 ? 'success' : value < 0.05 ? 'warning' : 'danger')
-    : (value >= 0.95 ? 'success' : value >= 0.80 ? 'warning' : 'danger')
-
-  return (
-    <div className="metric-card">
-      <div className="metric-header">
-        <span className="metric-label">{label}</span>
-        <span className={`metric-value ${colorClass}`}>{displayValue}</span>
-      </div>
-      <p className="metric-description">{description}</p>
+      <p>
+        No metrics are shown here on purpose. Run <code>make reproduce</code> and read{' '}
+        <code>results/report.md</code> (precision, recall, F1, PR-AUC, FPR, baselines and recall per
+        attack type on AIT-LDSv2).
+      </p>
     </div>
   )
 }
@@ -621,20 +327,20 @@ function FeaturesTab() {
       ]
     },
     {
-      category: '🌍 Geographic Features (3)',
+      category: '🧾 Event content (5)',
       items: [
-        { name: 'geographic_distance_km', description: 'Distance from typical location', importance: 'high' },
-        { name: 'is_known_country', description: 'Request from known country', importance: 'medium' },
-        { name: 'is_known_ip', description: 'IP in whitelist', importance: 'high' }
+        { name: 'status_class', description: 'HTTP status hundreds digit', importance: 'medium' },
+        { name: 'is_known_ip', description: 'IP seen during training', importance: 'medium' },
+        { name: 'path_length', description: 'Length of the request target', importance: 'medium' },
+        { name: 'special_char_ratio', description: 'Share of unusual characters in the target', importance: 'medium' },
+        { name: 'payload_entropy', description: 'Shannon entropy of the target', importance: 'medium' }
       ]
     },
     {
-      category: '🎭 Behavioral Features (4)',
+      category: '🎭 Behavioral Features (2)',
       items: [
         { name: 'bytes_transferred', description: 'Data volume (log scale)', importance: 'low' },
-        { name: 'time_since_last_activity_sec', description: 'Time since last activity', importance: 'medium' },
-        { name: 'session_duration_sec', description: 'Session length', importance: 'low' },
-        { name: 'payload_entropy', description: 'Randomness of payload', importance: 'high' }
+        { name: 'time_since_last_activity_sec', description: 'Time since last activity', importance: 'medium' }
       ]
     },
     {
@@ -652,7 +358,7 @@ function FeaturesTab() {
       <h3>🔧 Feature Engineering</h3>
       <p className="features-intro">
         The model uses <strong>21 engineered features</strong> extracted from raw security logs. 
-        Features are calculated in real-time using Redis (rates), PostgreSQL (historical), and GeoIP (location).
+        Features are deterministic, causal sliding-window statistics computed in-process (no Redis, database or GeoIP lookups).
       </p>
 
       <div className="features-list">
@@ -689,29 +395,29 @@ function FeaturesTab() {
           <div className="process-step">
             <span className="step-num">2</span>
             <div>
-              <h5>Query Redis</h5>
-              <p>Get rates (login attempts, requests/sec) from last 60s</p>
+              <h5>Sliding windows</h5>
+              <p>Per-IP rates and ratios over the last 60 s / 5 min, in memory</p>
             </div>
           </div>
           <div className="process-step">
             <span className="step-num">3</span>
             <div>
-              <h5>Query PostgreSQL</h5>
-              <p>Get historical data (last activity, unique IPs)</p>
+              <h5>Request content</h5>
+              <p>Length, special-character ratio and entropy of the request target</p>
             </div>
           </div>
           <div className="process-step">
             <span className="step-num">4</span>
             <div>
-              <h5>GeoIP Lookup</h5>
-              <p>Calculate geographic distance, country check</p>
+              <h5>Allow-list</h5>
+              <p>Flag source IPs and user agents seen before</p>
             </div>
           </div>
           <div className="process-step">
             <span className="step-num">5</span>
             <div>
-              <h5>Normalize & Scale</h5>
-              <p>Convert to [0, 1] range for ML model</p>
+              <h5>Scale</h5>
+              <p>Standardise with the training-set mean and variance</p>
             </div>
           </div>
         </div>

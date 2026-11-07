@@ -7,6 +7,7 @@ interface DashboardProps {
     logs_analyzed_24h: number
     anomalies_detected_24h: number
     anomaly_rate: number
+    model_version: string
   } | null
 }
 
@@ -66,8 +67,7 @@ function Dashboard({ stats }: DashboardProps) {
     {
       label: 'Logs Analyzed (24h)',
       value: stats.logs_analyzed_24h.toLocaleString(),
-      icon: '📊',
-      trend: '+12%'
+      icon: '📊'
     },
     {
       label: 'Anomalies Detected',
@@ -82,10 +82,9 @@ function Dashboard({ stats }: DashboardProps) {
       color: stats.anomaly_rate > 0.05 ? 'danger' : 'success'
     },
     {
-      label: 'Detection Accuracy',
-      value: '94.2%',
-      icon: '🎯',
-      color: 'success'
+      label: 'Model version',
+      value: stats.model_version.slice(0, 10),
+      icon: '🎯'
     }
   ]
 
@@ -101,7 +100,6 @@ function Dashboard({ stats }: DashboardProps) {
               <span className="stat-label">{stat.label}</span>
             </div>
             <div className="stat-value">{stat.value}</div>
-            {stat.trend && <div className="stat-trend">{stat.trend}</div>}
           </div>
         ))}
       </div>

@@ -24,10 +24,10 @@ class NginxParser(LogParser):
     # Access log pattern (combined format):
     # 192.168.1.1 - user [13/Jan/2026:12:00:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "http://example.com" "Mozilla/5.0..."
     ACCESS_PATTERN = re.compile(
-        r"^(?P<ip>[\d\.]+)\s+-\s+(?P<user>\S+)\s+"
+        r"^(?P<ip>\S+)\s+\S+\s+(?P<user>\S+)\s+"
         r"\[(?P<timestamp>[^\]]+)\]\s+"
         r'"(?P<method>\S+)\s+(?P<endpoint>\S+)\s+(?P<protocol>[^"]+)"\s+'
-        r"(?P<status>\d+)\s+(?P<bytes>\d+)\s+"
+        r"(?P<status>\d+)\s+(?P<bytes>\d+|-)\s+"
         r'"(?P<referer>[^"]*)"\s+"(?P<user_agent>[^"]*)"'
     )
 
@@ -81,7 +81,7 @@ class NginxParser(LogParser):
         endpoint = match.group("endpoint")
         protocol = match.group("protocol")
         status = int(match.group("status"))
-        bytes_sent = int(match.group("bytes"))
+        bytes_sent = 0 if match.group("bytes") == "-" else int(match.group("bytes"))
         referer = match.group("referer")
         user_agent = match.group("user_agent")
 
@@ -146,8 +146,7 @@ class NginxParser(LogParser):
     def _parse_nginx_timestamp(timestamp_str: str) -> datetime:
         """Parse Nginx timestamp: '13/Jan/2026:12:00:00 +0000'"""
         # Remove timezone part for simplicity
-        timestamp_str = timestamp_str.split()[0]
-        return datetime.strptime(timestamp_str, "%d/%b/%Y:%H:%M:%S").replace(tzinfo=timezone.utc)
+        return datetime.strptime(timestamp_str, "%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
 
     @staticmethod
     def _determine_access_event_type(method: str, endpoint: str, status: int) -> str:
@@ -156,7 +155,7 @@ class NginxParser(LogParser):
 
         # Authentication endpoints
         if any(path in endpoint_lower for path in ["/login", "/auth", "/signin", "/signup"]):
-            if status < 400:  # noqa: PLR2004
+            if status < 400:
                 return "http_auth_success"
             return "http_auth_failed"
 
@@ -194,9 +193,9 @@ class NginxParser(LogParser):
     @staticmethod
     def _determine_severity_from_status(status: int) -> str:
         """Map HTTP status to severity."""
-        if status >= 500:  # noqa: PLR2004
+        if status >= 500:
             return "ERROR"
-        if status >= 400:  # noqa: PLR2004
+        if status >= 400:
             return "WARNING"
         return "INFO"
 

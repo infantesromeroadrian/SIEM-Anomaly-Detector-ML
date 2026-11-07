@@ -140,7 +140,7 @@ class FirewallParser(LogParser):
         # Port-based detection
         if dst_port:
             # SSH
-            if dst_port == 22:  # noqa: PLR2004
+            if dst_port == 22:
                 return f"firewall_ssh_{action.lower()}"
 
             # HTTP/HTTPS
@@ -148,7 +148,7 @@ class FirewallParser(LogParser):
                 return f"firewall_http_{action.lower()}"
 
             # RDP
-            if dst_port == 3389:  # noqa: PLR2004
+            if dst_port == 3389:
                 return f"firewall_rdp_{action.lower()}"
 
             # SMB
@@ -156,7 +156,7 @@ class FirewallParser(LogParser):
                 return f"firewall_smb_{action.lower()}"
 
             # DNS
-            if dst_port == 53:  # noqa: PLR2004
+            if dst_port == 53:
                 return f"firewall_dns_{action.lower()}"
 
             # Database ports

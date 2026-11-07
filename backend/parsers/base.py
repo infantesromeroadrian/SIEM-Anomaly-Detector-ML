@@ -128,7 +128,6 @@ class LogParser(ABC):
         Raises:
             ValueError: If log line cannot be parsed
         """
-        pass
 
     def parse_batch(self, log_lines: list[str]) -> list[ParsedLog]:
         """
@@ -161,8 +160,7 @@ class LogParser(ABC):
         Returns:
             datetime object (UTC)
         """
-        import calendar
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Common syslog format: "Jan 13 12:00:00"
         if year is None:
@@ -185,13 +183,13 @@ class LogParser(ABC):
 
         # Try syslog format: "Jan 13 12:00:00"
         parts = timestamp_str.split()
-        if len(parts) >= 3 and parts[0] in month_map:  # noqa: PLR2004
+        if len(parts) >= 3 and parts[0] in month_map:
             month = month_map[parts[0]]
             day = int(parts[1])
             time_parts = parts[2].split(":")
             hour = int(time_parts[0])
             minute = int(time_parts[1])
-            second = int(time_parts[2]) if len(time_parts) > 2 else 0  # noqa: PLR2004
+            second = int(time_parts[2]) if len(time_parts) > 2 else 0
 
             return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
 

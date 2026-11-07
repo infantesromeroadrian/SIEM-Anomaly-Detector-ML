@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # Security
     # ============================================================================
     secret_key: str = Field(
-        default="your-secret-key-change-in-production",
+        default="",
         description="Secret key for JWT and encryption",
     )
     allowed_hosts: str = Field(default="*", description="Comma-separated allowed hosts")
@@ -70,7 +70,9 @@ class Settings(BaseSettings):
     )
     postgres_db: str = Field(default="siem_db", description="Database name")
     postgres_user: str = Field(default="siem_user", description="Database user")
-    postgres_password: str = Field(default="changeme", description="Database password")
+    postgres_password: str = Field(
+        default="", description="Database password (set via POSTGRES_PASSWORD)"
+    )
 
     postgres_pool_size: int = Field(
         default=20,
@@ -164,7 +166,7 @@ class Settings(BaseSettings):
     )
 
     ensemble_weights: str = Field(
-        default="0.5,0.3,0.2",
+        default="1.0,0.0,0.0",
         description="Comma-separated ensemble weights (IF,DBSCAN,GMM)",
     )
 
@@ -194,7 +196,7 @@ class Settings(BaseSettings):
         """Validate ensemble weights sum to 1.0."""
         try:
             weights = [float(w.strip()) for w in v.split(",")]
-            if len(weights) != 3:  # noqa: PLR2004
+            if len(weights) != 3:
                 msg = "Ensemble weights must have exactly 3 values (IF,DBSCAN,GMM)"
                 raise ValueError(msg)
             if not abs(sum(weights) - 1.0) < 0.001:  # Allow small floating point error
