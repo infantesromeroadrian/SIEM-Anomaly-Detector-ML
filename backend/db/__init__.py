@@ -6,8 +6,8 @@ Provides SQLAlchemy models, connection management, and CRUD operations.
 
 from __future__ import annotations
 
-from backend.db.models import Anomaly, Log, Feedback, Alert
-from backend.db.database import get_db, init_db, close_db
+from backend.db.database import close_db, get_db, init_db
+from backend.db.models import Alert, Anomaly, Feedback, Log
 
 __all__ = [
     "Anomaly",

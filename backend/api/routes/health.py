@@ -15,7 +15,6 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
 from backend import __version__
-from backend.config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -49,6 +48,42 @@ _start_time = time.time()
 
 
 # ============================================================================
+# Dependency checks (real probes, no mocked values)
+# ============================================================================
+async def _check_database() -> dict[str, Any]:
+    t0 = time.perf_counter()
+    try:
+        from sqlalchemy import text
+
+        from backend.db.database import get_db
+
+        async with get_db() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as e:
+        return {"status": "unhealthy", "error": type(e).__name__}
+    return {"status": "healthy", "latency_ms": round((time.perf_counter() - t0) * 1000, 2)}
+
+
+async def _check_redis() -> dict[str, Any]:
+    t0 = time.perf_counter()
+    try:
+        from backend.db.cache import get_redis
+
+        await get_redis().ping()
+    except Exception as e:
+        return {"status": "unhealthy", "error": type(e).__name__}
+    return {"status": "healthy", "latency_ms": round((time.perf_counter() - t0) * 1000, 2)}
+
+
+def _check_model() -> dict[str, Any]:
+    from backend.ml.model_loader import get_model_loader
+
+    loader = get_model_loader()
+    loaded = loader.is_loaded()
+    return {"status": "healthy" if loaded else "unloaded", "loaded": loaded}
+
+
+# ============================================================================
 # Endpoints
 # ============================================================================
 @router.get(
@@ -77,58 +112,9 @@ async def health_check() -> HealthResponse:
     # Check individual components
     checks: dict[str, dict[str, Any]] = {}
 
-    # Database check
-    try:
-        # TODO: Implement actual database check
-        # from backend.db.database import check_db_connection
-        # db_status = await check_db_connection()
-        db_status = "healthy"  # Mock for now
-        checks["database"] = {
-            "status": "healthy",
-            "latency_ms": 5.2,
-            "details": db_status,
-        }
-    except Exception as e:
-        logger.error("database_health_check_failed", error=str(e))
-        checks["database"] = {
-            "status": "unhealthy",
-            "error": str(e),
-        }
-
-    # Redis check
-    try:
-        # TODO: Implement actual Redis check
-        # from backend.db.cache import ping_redis
-        # redis_status = await ping_redis()
-        redis_status = "healthy"  # Mock for now
-        checks["redis"] = {
-            "status": "healthy",
-            "latency_ms": 1.8,
-            "details": redis_status,
-        }
-    except Exception as e:
-        logger.error("redis_health_check_failed", error=str(e))
-        checks["redis"] = {
-            "status": "unhealthy",
-            "error": str(e),
-        }
-
-    # ML Models check
-    try:
-        # TODO: Check if models are loaded
-        # model_status = app.state.ml_ensemble.is_loaded()
-        model_status = True  # Mock for now
-        checks["ml_models"] = {
-            "status": "healthy" if model_status else "unloaded",
-            "model_version": "v1.0.0",
-            "loaded": model_status,
-        }
-    except Exception as e:
-        logger.error("ml_models_health_check_failed", error=str(e))
-        checks["ml_models"] = {
-            "status": "unhealthy",
-            "error": str(e),
-        }
+    checks["database"] = await _check_database()
+    checks["redis"] = await _check_redis()
+    checks["ml_models"] = _check_model()
 
     # Determine overall status
     all_healthy = all(check.get("status") == "healthy" for check in checks.values())
@@ -169,26 +155,11 @@ async def readiness_check() -> ReadinessResponse:
     Raises:
         HTTPException: 503 if service is not ready
     """
-    services: dict[str, bool] = {}
-
-    # Check critical services
-    try:
-        # TODO: Check database
-        services["database"] = True
-    except Exception:
-        services["database"] = False
-
-    try:
-        # TODO: Check Redis
-        services["redis"] = True
-    except Exception:
-        services["redis"] = False
-
-    try:
-        # TODO: Check ML models loaded
-        services["ml_models"] = True
-    except Exception:
-        services["ml_models"] = False
+    services = {
+        "database": (await _check_database())["status"] == "healthy",
+        "redis": (await _check_redis())["status"] == "healthy",
+        "ml_models": _check_model()["status"] == "healthy",
+    }
 
     # Service is ready only if ALL critical services are up
     ready = all(services.values())

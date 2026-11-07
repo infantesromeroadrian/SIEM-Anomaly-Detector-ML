@@ -10,7 +10,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import joblib
 import numpy as np
@@ -21,9 +20,14 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 
 from backend.config import settings
-from backend.ml.features import FeatureEngineer, LogFeatures
+from backend.ml.features import FEATURE_NAMES, FeatureEngineer, LogFeatures
+from backend.ml.scoring import score_arrays
 
 logger = structlog.get_logger(__name__)
+
+#: Isolation Forest only. DBSCAN and GMM stay available as opt-in components, but on the AIT-LDSv2
+#: evaluation they added nothing measurable on the held-out protocol (see results/report.md).
+DEFAULT_WEIGHTS = (1.0, 0.0, 0.0)
 
 
 @dataclass
@@ -69,6 +73,7 @@ class AnomalyEnsemble:
         dbscan_min_samples: int = 50,
         gmm_n_components: int = 3,
         ensemble_weights: list[float] | None = None,
+        random_state: int = 42,
     ) -> None:
         """
         Initialize anomaly ensemble.
@@ -79,10 +84,12 @@ class AnomalyEnsemble:
             dbscan_eps: DBSCAN eps parameter
             dbscan_min_samples: DBSCAN min_samples parameter
             gmm_n_components: Number of GMM components
-            ensemble_weights: Weights for [IF, DBSCAN, GMM]. Defaults to [0.5, 0.3, 0.2]
+            ensemble_weights: Weights for [IF, DBSCAN, GMM]. Defaults to [1.0, 0.0, 0.0] (Isolation Forest only);
+                a component with weight 0 is neither trained nor scored
+            random_state: Seed for Isolation Forest and GMM
         """
         self.contamination = contamination
-        self.ensemble_weights = ensemble_weights or [0.5, 0.3, 0.2]
+        self.ensemble_weights = ensemble_weights or list(DEFAULT_WEIGHTS)
 
         # Validate weights
         if not np.isclose(sum(self.ensemble_weights), 1.0):
@@ -94,7 +101,7 @@ class AnomalyEnsemble:
             contamination=contamination,
             n_estimators=n_estimators,
             max_samples="auto",
-            random_state=42,
+            random_state=random_state,
             n_jobs=-1,
         )
 
@@ -107,7 +114,7 @@ class AnomalyEnsemble:
         self.gmm = GaussianMixture(
             n_components=gmm_n_components,
             covariance_type="full",
-            random_state=42,
+            random_state=random_state,
             n_init=10,
         )
 
@@ -152,35 +159,33 @@ class AnomalyEnsemble:
         logger.info("training_isolation_forest")
         self.isolation_forest.fit(X)
 
-        # Train DBSCAN (uses scaled features)
-        logger.info("training_dbscan")
-        self.dbscan.fit(X_scaled)
+        n_clusters = n_noise = 0
+        gmm_bic = None
+        self._X_scaled_training = None
+        self._cluster_centroids = {}
+        if self.ensemble_weights[1] > 0:
+            logger.info("training_dbscan")
+            self.dbscan.fit(X_scaled)
+            self._X_scaled_training = X_scaled.copy()
+            self._compute_cluster_centroids()
+            n_clusters = len(set(self.dbscan.labels_)) - (1 if -1 in self.dbscan.labels_ else 0)
+            n_noise = int(np.sum(self.dbscan.labels_ == -1))
+        if self.ensemble_weights[2] > 0:
+            logger.info("training_gmm")
+            self.gmm.fit(X_scaled)
+            gmm_bic = round(self.gmm.bic(X_scaled), 2)
 
-        # Store training data and compute cluster centroids for DBSCAN prediction
-        self._X_scaled_training = X_scaled.copy()
-        self._compute_cluster_centroids()
-
-        # Train GMM (uses scaled features)
-        logger.info("training_gmm")
-        self.gmm.fit(X_scaled)
-
-        # Update state
         self.is_trained = True
         self.trained_at = datetime.now(timezone.utc)
         self.n_training_samples = X.shape[0]
 
-        training_time = time.time() - start_time
-
-        n_clusters = len(set(self.dbscan.labels_)) - (1 if -1 in self.dbscan.labels_ else 0)
-        n_noise = np.sum(self.dbscan.labels_ == -1)
-
         logger.info(
             "ensemble_training_completed",
             n_samples=X.shape[0],
-            training_time_sec=round(training_time, 2),
+            training_time_sec=round(time.time() - start_time, 2),
             n_clusters_dbscan=n_clusters,
             n_noise_points=n_noise,
-            gmm_bic=round(self.gmm.bic(X_scaled), 2),
+            gmm_bic=gmm_bic,
         )
 
     def predict(self, features: LogFeatures) -> AnomalyResult:
@@ -201,101 +206,26 @@ class AnomalyEnsemble:
             raise RuntimeError(msg)
 
         start_time = time.time()
-
-        # Convert features to array
         X = features.to_array().reshape(1, -1)
-        X_scaled = self.scaler.transform(X)
+        scores = self.score_batch(X)
+        if_score = float(scores["isolation_forest"][0])
+        dbscan_score = float(scores["dbscan"][0])
+        gmm_score = float(scores["gmm"][0])
+        final_score = float(scores["risk"][0])
 
-        # ====================================================================
-        # Isolation Forest Score
-        # ====================================================================
-        # decision_function returns negative values (more negative = more anomalous)
-        # We convert to [0, 1] where 1 = most anomalous
-        if_decision = self.isolation_forest.decision_function(X)[0]
-
-        # Normalize to [0, 1] using training distribution
-        # Typical range: [-0.5, 0.5], outliers < -0.2
-        if_score = 1.0 / (1.0 + np.exp(if_decision * 10))  # Sigmoid transformation
-
-        # ====================================================================
-        # DBSCAN Score
-        # ====================================================================
-        # DBSCAN doesn't have predict(), so we check distance to nearest cluster
-        # If point would be labeled as outlier (-1), score is high
-        dbscan_prediction = self._predict_dbscan(X_scaled[0])
-
-        if dbscan_prediction == -1:
-            # Outlier
-            dbscan_score = 0.9
-        else:
-            # Part of cluster - use stored centroid
-            if hasattr(self, "_cluster_centroids") and dbscan_prediction in self._cluster_centroids:
-                centroid = self._cluster_centroids[dbscan_prediction]
-                distance = np.linalg.norm(X_scaled[0] - centroid)
-                dbscan_score = min(distance / 10.0, 1.0)  # Normalize
-            else:
-                # Fallback: calculate from training data
-                cluster_mask = self.dbscan.labels_ == dbscan_prediction
-                cluster_points = self._X_scaled_training[cluster_mask]
-
-                if len(cluster_points) > 0:
-                    centroid = cluster_points.mean(axis=0)
-                    distance = np.linalg.norm(X_scaled[0] - centroid)
-                    dbscan_score = min(distance / 10.0, 1.0)
-                else:
-                    dbscan_score = 0.5
-
-        # ====================================================================
-        # GMM Score
-        # ====================================================================
-        # Use log-likelihood as anomaly score
-        # Lower log-likelihood = more anomalous
-        gmm_log_likelihood = self.gmm.score_samples(X_scaled)[0]
-
-        # Normalize using training distribution
-        # Typical range: [-20, -5], outliers < -15
-        gmm_score = 1.0 / (1.0 + np.exp((gmm_log_likelihood + 10) * 0.5))
-
-        # ====================================================================
-        # Aggregate Scores with Ensemble Weights
-        # ====================================================================
-        final_score = (
-            self.ensemble_weights[0] * if_score
-            + self.ensemble_weights[1] * dbscan_score
-            + self.ensemble_weights[2] * gmm_score
-        )
-
-        # Clamp to [0, 1]
-        final_score = max(0.0, min(1.0, final_score))
-
-        # Determine if anomaly based on threshold
         is_anomaly = final_score >= settings.alert_threshold_medium
 
         # Confidence based on agreement between models
-        scores = [if_score, dbscan_score, gmm_score]
-        score_std = np.std(scores)
-
-        if score_std < 0.1:  # noqa: PLR2004
+        score_std = np.std([if_score, dbscan_score, gmm_score])
+        if score_std < 0.1:
             confidence = "high"
-        elif score_std < 0.2:  # noqa: PLR2004
+        elif score_std < 0.2:
             confidence = "medium"
         else:
             confidence = "low"
 
-        # Feature importance (simple version - which features are far from mean)
         important_features = self._get_important_features(X[0])
-
         processing_time = (time.time() - start_time) * 1000
-
-        logger.debug(
-            "anomaly_prediction",
-            is_anomaly=is_anomaly,
-            risk_score=round(final_score, 3),
-            if_score=round(if_score, 3),
-            dbscan_score=round(dbscan_score, 3),
-            gmm_score=round(gmm_score, 3),
-            processing_time_ms=round(processing_time, 2),
-        )
 
         return AnomalyResult(
             is_anomaly=is_anomaly,
@@ -307,6 +237,32 @@ class AnomalyEnsemble:
             important_features=important_features,
             processing_time_ms=round(processing_time, 2),
             model_version=self.model_version,
+        )
+
+    def score_batch(self, X: np.ndarray) -> dict[str, np.ndarray]:
+        """
+        Score many feature vectors at once.
+
+        Args:
+            X: Array of shape (n_samples, n_features).
+
+        Returns:
+            Dict with per-model scores and the aggregated ``risk`` in [0, 1].
+
+        Raises:
+            RuntimeError: If models are not trained.
+        """
+        if not self.is_trained:
+            msg = "Models must be trained before prediction"
+            raise RuntimeError(msg)
+        return score_arrays(
+            X,
+            isolation_forest=self.isolation_forest,
+            dbscan=self.dbscan,
+            gmm=self.gmm,
+            scaler=self.scaler,
+            centroids=self._cluster_centroids,
+            weights=self.ensemble_weights,
         )
 
     def _compute_cluster_centroids(self) -> None:
@@ -324,43 +280,6 @@ class AnomalyEnsemble:
 
         logger.debug("dbscan_centroids_computed", n_clusters=len(self._cluster_centroids))
 
-    def _predict_dbscan(self, X_point: np.ndarray) -> int:
-        """
-        Predict DBSCAN cluster for new point.
-
-        DBSCAN doesn't have predict(), so we find nearest cluster centroid.
-        If distance exceeds eps threshold, classify as outlier (-1).
-
-        Args:
-            X_point: Single data point (scaled)
-
-        Returns:
-            Cluster label (-1 for outlier, >= 0 for cluster membership)
-        """
-        if not self._cluster_centroids:
-            # No clusters found during training, classify as outlier
-            return -1
-
-        # Find nearest cluster centroid
-        min_distance = float("inf")
-        nearest_cluster = -1
-
-        for label, centroid in self._cluster_centroids.items():
-            distance = np.linalg.norm(X_point - centroid)
-            if distance < min_distance:
-                min_distance = distance
-                nearest_cluster = label
-
-        # Check if point is within eps radius of nearest cluster
-        # Use 2*eps as threshold (more lenient for new points)
-        eps_threshold = self.dbscan.eps * 2.0
-
-        if min_distance <= eps_threshold:
-            return nearest_cluster
-        else:
-            # Too far from any cluster → outlier
-            return -1
-
     def _get_important_features(
         self, X_point: np.ndarray, top_k: int = 5
     ) -> list[tuple[str, float]]:
@@ -374,33 +293,12 @@ class AnomalyEnsemble:
         Returns:
             List of (feature_name, importance_score) tuples
         """
-        feature_names = [
-            "hour_of_day",
-            "day_of_week",
-            "is_weekend",
-            "is_business_hours",
-            "login_attempts_per_minute",
-            "requests_per_second",
-            "unique_ips_last_hour",
-            "unique_endpoints_accessed",
-            "failed_auth_rate",
-            "error_rate_4xx",
-            "error_rate_5xx",
-            "geographic_distance_km",
-            "is_known_country",
-            "is_known_ip",
-            "bytes_transferred",
-            "time_since_last_activity_sec",
-            "session_duration_sec",
-            "payload_entropy",
-            "is_privileged_user",
-            "is_sensitive_endpoint",
-            "is_known_user_agent",
-        ]
+        feature_names = FEATURE_NAMES
 
         # Simple importance: absolute deviation from mean (normalized by std)
         # TODO: Use more sophisticated feature importance (SHAP values)
-        importances = np.abs(X_point - X_point.mean()) / (X_point.std() + 1e-10)
+        z = self.scaler.transform(X_point.reshape(1, -1))[0]
+        importances = np.abs(z)
 
         # Get top k
         top_indices = np.argsort(importances)[-top_k:][::-1]

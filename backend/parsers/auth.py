@@ -6,8 +6,8 @@ Parses Linux authentication logs (SSH, sudo, su, PAM, etc.).
 
 from __future__ import annotations
 
-from backend.parsers.syslog import SyslogParser
 from backend.parsers.base import ParsedLog
+from backend.parsers.syslog import SyslogParser
 
 
 class AuthLogParser(SyslogParser):

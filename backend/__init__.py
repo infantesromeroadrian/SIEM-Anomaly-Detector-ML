@@ -5,7 +5,7 @@ ML-based Security Information and Event Management system for real-time
 anomaly detection in security logs.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.2.0"
 __author__ = "Adrian Infantes Romero"
 __email__ = "your.email@example.com"
 

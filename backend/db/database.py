@@ -6,8 +6,8 @@ Provides async connection pool and session management.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 from sqlalchemy.ext.asyncio import (

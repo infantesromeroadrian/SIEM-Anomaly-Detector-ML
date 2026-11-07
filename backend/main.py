@@ -7,8 +7,9 @@ Entry point for the SIEM API server.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request, status
@@ -110,8 +111,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Load ML models
         from backend.ml.model_loader import initialize_model
 
-        initialize_model(settings.model_path)
-        logger.info("ml_models_loaded", model_path=str(settings.model_path))
+        try:
+            initialize_model(settings.model_path)
+            logger.info("ml_models_loaded", model_path=str(settings.model_path))
+        except FileNotFoundError:
+            logger.warning(
+                "ml_model_missing_api_degraded",
+                model_path=str(settings.model_path),
+                hint="run `make reproduce` or `make demo-model`",
+            )
 
         # Connect to Redis
         from backend.db.cache import init_redis

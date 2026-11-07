@@ -19,18 +19,16 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
-    Index,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     """Base class for all models."""
-
-    pass
 
 
 class Anomaly(Base):
@@ -110,10 +108,10 @@ class Anomaly(Base):
     false_positive: Mapped[bool | None] = mapped_column(Boolean)
 
     # Relationships
-    feedback: Mapped[list["Feedback"]] = relationship(
+    feedback: Mapped[list[Feedback]] = relationship(
         "Feedback", back_populates="anomaly", cascade="all, delete-orphan"
     )
-    alerts: Mapped[list["Alert"]] = relationship(
+    alerts: Mapped[list[Alert]] = relationship(
         "Alert", back_populates="anomaly", cascade="all, delete-orphan"
     )
 
@@ -236,7 +234,7 @@ class Feedback(Base):
     corrected_event_type: Mapped[str | None] = mapped_column(String(100))
 
     # Relationships
-    anomaly: Mapped["Anomaly"] = relationship("Anomaly", back_populates="feedback")
+    anomaly: Mapped[Anomaly] = relationship("Anomaly", back_populates="feedback")
 
     def __repr__(self) -> str:
         return (
@@ -300,7 +298,7 @@ class Alert(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
-    anomaly: Mapped["Anomaly"] = relationship("Anomaly", back_populates="alerts")
+    anomaly: Mapped[Anomaly] = relationship("Anomaly", back_populates="alerts")
 
     # Indexes
     __table_args__ = (

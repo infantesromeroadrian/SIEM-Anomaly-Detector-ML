@@ -1,11 +1,20 @@
 """
 Feature engineering for log analysis.
 
-Extracts ML-ready features from parsed log data.
+All features are deterministic functions of the event stream seen so far
+(causal windows: an event only sees itself and earlier events). There is no
+randomness and no external service involved, so training, offline evaluation
+and online scoring share exactly the same code path.
+
+Earlier revisions filled some features with ``np.random`` values (geographic
+distance, session duration and every Redis fallback). Those features carried no
+information and have been removed.
 """
 
 from __future__ import annotations
 
+import math
+from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -15,82 +24,91 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+#: Column order of ``LogFeatures.to_array``. Single source of truth.
+FEATURE_NAMES: tuple[str, ...] = (
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+    "is_business_hours",
+    "login_attempts_per_minute",
+    "requests_per_second",
+    "unique_ips_last_hour",
+    "unique_endpoints_accessed",
+    "failed_auth_rate",
+    "error_rate_4xx",
+    "error_rate_5xx",
+    "status_class",
+    "is_known_ip",
+    "bytes_transferred",
+    "time_since_last_activity_sec",
+    "path_length",
+    "special_char_ratio",
+    "payload_entropy",
+    "is_privileged_user",
+    "is_sensitive_endpoint",
+    "is_known_user_agent",
+)
+
+#: Seconds. Window for per-IP rates.
+SHORT_WINDOW_SEC = 60
+#: Seconds. Window for per-IP ratios and distinct endpoints.
+MEDIUM_WINDOW_SEC = 300
+#: Seconds. Window for the global distinct-IP counter.
+LONG_WINDOW_SEC = 3600
+#: Cap on the per-IP event history (bounds memory under flooding).
+MAX_EVENTS_PER_IP = 5000
+#: Cap on tracked IPs (bounds memory under source-address spraying).
+MAX_TRACKED_IPS = 50_000
+#: Cap used for ``time_since_last_activity_sec`` (one hour).
+MAX_IDLE_SEC = 3600.0
+
+_BENIGN_PATH_CHARS = frozenset("/.-_")
+
 
 @dataclass
 class LogFeatures:
-    """
-    Feature vector extracted from a log entry.
+    """Feature vector extracted from one log entry (see ``FEATURE_NAMES``)."""
 
-    All features are normalized and ready for ML models.
-    """
-
-    # Temporal features
-    hour_of_day: int  # 0-23
-    day_of_week: int  # 0-6 (0=Monday)
+    # Temporal
+    hour_of_day: int
+    day_of_week: int  # 0 = Monday
     is_weekend: bool
-    is_business_hours: bool  # 9 AM - 6 PM
+    is_business_hours: bool  # 09:00 - 18:00
 
-    # Frequency features (per source IP)
+    # Per-source-IP activity (causal windows)
     login_attempts_per_minute: float
-    requests_per_second: float
+    requests_per_second: float  # requests in the last 60 s / 60
     unique_ips_last_hour: int
     unique_endpoints_accessed: int
 
-    # Rate features
-    failed_auth_rate: float  # 0.0-1.0
-    error_rate_4xx: float  # 0.0-1.0
-    error_rate_5xx: float  # 0.0-1.0
+    # Per-source-IP ratios over the last 5 minutes
+    failed_auth_rate: float
+    error_rate_4xx: float
+    error_rate_5xx: float
 
-    # Geographic features
-    geographic_distance_km: float  # Distance from usual location
-    is_known_country: bool
-    is_known_ip: bool
-
-    # Behavioral features
-    bytes_transferred: float  # Normalized (log scale)
+    # Event content
+    status_class: int  # 0 unknown, otherwise the hundreds digit (2, 3, 4, 5)
+    is_known_ip: bool  # IP present in the configured / training-time allowlist
+    bytes_transferred: float  # log1p(bytes)
     time_since_last_activity_sec: float
-    session_duration_sec: float
-    payload_entropy: float  # Shannon entropy of payload
+    path_length: float
+    special_char_ratio: float
+    payload_entropy: float  # Shannon entropy (bits/char) of the request target
 
-    # Context features
+    # Context
     is_privileged_user: bool
     is_sensitive_endpoint: bool
     is_known_user_agent: bool
 
     def to_array(self) -> np.ndarray:
-        """
-        Convert features to numpy array for ML models.
-
-        Returns:
-            1D numpy array of shape (n_features,)
-        """
-        features = [
-            self.hour_of_day,
-            self.day_of_week,
-            float(self.is_weekend),
-            float(self.is_business_hours),
-            self.login_attempts_per_minute,
-            self.requests_per_second,
-            self.unique_ips_last_hour,
-            self.unique_endpoints_accessed,
-            self.failed_auth_rate,
-            self.error_rate_4xx,
-            self.error_rate_5xx,
-            self.geographic_distance_km,
-            float(self.is_known_country),
-            float(self.is_known_ip),
-            self.bytes_transferred,
-            self.time_since_last_activity_sec,
-            self.session_duration_sec,
-            self.payload_entropy,
-            float(self.is_privileged_user),
-            float(self.is_sensitive_endpoint),
-            float(self.is_known_user_agent),
-        ]
-        return np.array(features, dtype=np.float32)
+        """Return the features as a float32 vector ordered as ``FEATURE_NAMES``."""
+        return np.array(
+            [float(getattr(self, name)) for name in FEATURE_NAMES],
+            dtype=np.float32,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert features to dictionary for API responses."""
+        """Convert features to a grouped dictionary for API responses."""
         return {
             "temporal": {
                 "hour_of_day": self.hour_of_day,
@@ -100,7 +118,7 @@ class LogFeatures:
             },
             "frequency": {
                 "login_attempts_per_minute": round(self.login_attempts_per_minute, 2),
-                "requests_per_second": round(self.requests_per_second, 2),
+                "requests_per_second": round(self.requests_per_second, 3),
                 "unique_ips_last_hour": self.unique_ips_last_hour,
                 "unique_endpoints_accessed": self.unique_endpoints_accessed,
             },
@@ -109,18 +127,16 @@ class LogFeatures:
                 "error_rate_4xx": round(self.error_rate_4xx, 3),
                 "error_rate_5xx": round(self.error_rate_5xx, 3),
             },
-            "geographic": {
-                "distance_km": round(self.geographic_distance_km, 1),
-                "is_known_country": self.is_known_country,
-                "is_known_ip": self.is_known_ip,
-            },
             "behavioral": {
+                "status_class": self.status_class,
                 "bytes_transferred": round(self.bytes_transferred, 2),
                 "time_since_last_activity_sec": round(self.time_since_last_activity_sec, 1),
-                "session_duration_sec": round(self.session_duration_sec, 1),
+                "path_length": round(self.path_length, 1),
+                "special_char_ratio": round(self.special_char_ratio, 3),
                 "payload_entropy": round(self.payload_entropy, 3),
             },
             "context": {
+                "is_known_ip": self.is_known_ip,
                 "is_privileged_user": self.is_privileged_user,
                 "is_sensitive_endpoint": self.is_sensitive_endpoint,
                 "is_known_user_agent": self.is_known_user_agent,
@@ -128,302 +144,220 @@ class LogFeatures:
         }
 
 
-class FeatureEngineer:
-    """
-    Feature engineering for security logs.
+@dataclass
+class _IpEvent:
+    ts: float
+    endpoint: str
+    status: int
+    is_auth: bool
+    auth_failed: bool
 
-    Extracts and normalizes features from parsed log data.
+
+class WindowedAggregator:
     """
+    In-memory, per-source-IP sliding-window state.
+
+    Events must be observed in (roughly) chronological order. Memory is bounded
+    by ``MAX_EVENTS_PER_IP`` and ``MAX_TRACKED_IPS`` so a flood or an
+    address-spraying source cannot grow it without limit.
+
+    Not thread-safe; the API uses a single instance per worker process.
+    """
+
+    def __init__(self) -> None:
+        """Create an empty aggregator."""
+        self._per_ip: OrderedDict[str, deque[_IpEvent]] = OrderedDict()
+        self._global: deque[tuple[float, str]] = deque()
+        self._global_counts: Counter[str] = Counter()
+
+    def observe(
+        self,
+        source_ip: str,
+        ts: float,
+        endpoint: str,
+        status: int,
+        is_auth: bool,
+        auth_failed: bool,
+    ) -> dict[str, float]:
+        """Record an event and return the window statistics that include it."""
+        events = self._per_ip.get(source_ip)
+        if events is None:
+            events = deque(maxlen=MAX_EVENTS_PER_IP)
+            self._per_ip[source_ip] = events
+            if len(self._per_ip) > MAX_TRACKED_IPS:
+                self._per_ip.popitem(last=False)
+        else:
+            self._per_ip.move_to_end(source_ip)
+
+        previous_ts = events[-1].ts if events else None
+        events.append(_IpEvent(ts, endpoint, status, is_auth, auth_failed))
+
+        # Drop events older than the largest per-IP window.
+        horizon = ts - MEDIUM_WINDOW_SEC
+        while events and events[0].ts < horizon:
+            events.popleft()
+
+        # Global distinct-IP counter.
+        self._global.append((ts, source_ip))
+        self._global_counts[source_ip] += 1
+        global_horizon = ts - LONG_WINDOW_SEC
+        while self._global and self._global[0][0] < global_horizon:
+            _, old_ip = self._global.popleft()
+            self._global_counts[old_ip] -= 1
+            if self._global_counts[old_ip] <= 0:
+                del self._global_counts[old_ip]
+
+        short_horizon = ts - SHORT_WINDOW_SEC
+        short = [e for e in events if e.ts >= short_horizon]
+        medium = list(events)
+        n_medium = len(medium)
+
+        auth_events = [e for e in short if e.is_auth]
+        auth_medium = [e for e in medium if e.is_auth]
+
+        return {
+            "requests_in_short_window": float(len(short)),
+            "login_attempts_per_minute": float(len(auth_events)),
+            "unique_endpoints": float(len({e.endpoint for e in medium})),
+            "unique_ips_last_hour": float(len(self._global_counts)),
+            "failed_auth_rate": (
+                sum(e.auth_failed for e in auth_medium) / len(auth_medium) if auth_medium else 0.0
+            ),
+            "error_rate_4xx": sum(400 <= e.status < 500 for e in medium) / n_medium,
+            "error_rate_5xx": sum(500 <= e.status < 600 for e in medium) / n_medium,
+            "idle_sec": (
+                min(max(ts - previous_ts, 0.0), MAX_IDLE_SEC)
+                if previous_ts is not None
+                else MAX_IDLE_SEC
+            ),
+        }
+
+    def reset(self) -> None:
+        """Forget all state."""
+        self._per_ip.clear()
+        self._global.clear()
+        self._global_counts.clear()
+
+
+def shannon_entropy(text: str) -> float:
+    """Return the Shannon entropy of ``text`` in bits per character."""
+    if not text:
+        return 0.0
+    total = len(text)
+    return -sum((c / total) * math.log2(c / total) for c in Counter(text).values())
+
+
+def special_char_ratio(text: str) -> float:
+    """Return the share of characters that are not alphanumeric nor ``/ . - _``."""
+    if not text:
+        return 0.0
+    odd = sum(1 for ch in text if not (ch.isalnum() or ch in _BENIGN_PATH_CHARS))
+    return odd / len(text)
+
+
+class FeatureEngineer:
+    """Turn parsed log dictionaries into ``LogFeatures`` using a ``WindowedAggregator``."""
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         """
-        Initialize feature engineer.
+        Initialize the feature engineer.
 
         Args:
-            config: Optional configuration (thresholds, known IPs, etc.)
+            config: Optional overrides: ``known_ips``, ``privileged_users``,
+                ``sensitive_endpoints``, ``known_user_agents``.
         """
         self.config = config or {}
-
-        # Known IPs/countries whitelist
         self.known_ips: set[str] = set(self.config.get("known_ips", ["127.0.0.1", "::1"]))
-        self.known_countries: set[str] = set(
-            self.config.get("known_countries", ["US", "ES", "FR", "DE", "GB"])
-        )
-
-        # Privileged users/endpoints
         self.privileged_users: set[str] = set(
             self.config.get("privileged_users", ["root", "admin", "administrator"])
         )
-        self.sensitive_endpoints: set[str] = set(
+        self.sensitive_endpoints: tuple[str, ...] = tuple(
             self.config.get(
                 "sensitive_endpoints",
                 ["/admin", "/api/admin", "/wp-admin", "/phpmyadmin"],
             )
         )
-
-        # Known user agents (legitimate)
-        self.known_user_agents: set[str] = set(
+        self.known_user_agents: tuple[str, ...] = tuple(
             self.config.get(
                 "known_user_agents",
-                [
-                    "Mozilla",
-                    "Chrome",
-                    "Safari",
-                    "Edge",
-                    "Firefox",
-                    "curl",
-                    "wget",
-                ],
+                ["Mozilla", "Chrome", "Safari", "Edge", "Firefox", "curl", "wget"],
             )
         )
+        self.aggregator = WindowedAggregator()
+        logger.info("feature_engineer_initialized", known_ips=len(self.known_ips))
 
-        # In-memory cache for aggregations (TODO: use Redis)
-        self._cache: dict[str, Any] = {}
+    def extract_sync(self, parsed_log: dict[str, Any]) -> LogFeatures:
+        """
+        Extract features from one parsed log entry and update the window state.
 
-        logger.info(
-            "feature_engineer_initialized",
-            known_ips=len(self.known_ips),
-            known_countries=len(self.known_countries),
+        Args:
+            parsed_log: Dictionary as produced by ``ParsedLog.to_dict``.
+
+        Returns:
+            The feature vector for this event.
+        """
+        timestamp = parsed_log.get("timestamp") or datetime.now(timezone.utc)
+        source_ip = parsed_log.get("source_ip") or "unknown"
+        username = parsed_log.get("username") or ""
+        endpoint = parsed_log.get("endpoint") or ""
+        user_agent = parsed_log.get("user_agent") or ""
+        status_code = int(parsed_log.get("status_code") or 0)
+        bytes_sent = max(int(parsed_log.get("bytes_sent") or 0), 0)
+        event_type = str(parsed_log.get("event_type") or "").lower()
+
+        is_auth = "auth" in event_type or "login" in event_type or "password" in event_type
+        auth_failed = is_auth and (
+            "fail" in event_type or parsed_log.get("success") is False or status_code >= 400
+        )
+
+        stats = self.aggregator.observe(
+            source_ip=source_ip,
+            ts=timestamp.timestamp(),
+            endpoint=endpoint,
+            status=status_code,
+            is_auth=is_auth,
+            auth_failed=auth_failed,
+        )
+
+        target = endpoint or str(parsed_log.get("payload") or "")
+        hour = timestamp.hour
+        weekday = timestamp.weekday()
+
+        return LogFeatures(
+            hour_of_day=hour,
+            day_of_week=weekday,
+            is_weekend=weekday >= 5,
+            is_business_hours=9 <= hour < 18,
+            login_attempts_per_minute=stats["login_attempts_per_minute"],
+            requests_per_second=stats["requests_in_short_window"] / SHORT_WINDOW_SEC,
+            unique_ips_last_hour=int(stats["unique_ips_last_hour"]),
+            unique_endpoints_accessed=int(stats["unique_endpoints"]),
+            failed_auth_rate=stats["failed_auth_rate"],
+            error_rate_4xx=stats["error_rate_4xx"],
+            error_rate_5xx=stats["error_rate_5xx"],
+            status_class=status_code // 100 if 100 <= status_code < 600 else 0,
+            is_known_ip=source_ip in self.known_ips,
+            bytes_transferred=float(np.log1p(bytes_sent)),
+            time_since_last_activity_sec=stats["idle_sec"],
+            path_length=float(len(target)),
+            special_char_ratio=special_char_ratio(target),
+            payload_entropy=shannon_entropy(target),
+            is_privileged_user=username.lower() in self.privileged_users,
+            is_sensitive_endpoint=any(endpoint.startswith(p) for p in self.sensitive_endpoints),
+            is_known_user_agent=any(ua in user_agent for ua in self.known_user_agents),
         )
 
     async def extract(self, parsed_log: dict[str, Any]) -> LogFeatures:
-        """
-        Extract features from parsed log entry.
+        """Async wrapper around ``extract_sync`` (kept for the API layer)."""
+        return self.extract_sync(parsed_log)
 
-        Args:
-            parsed_log: Dictionary with parsed log fields
 
-        Returns:
-            LogFeatures dataclass with normalized features
-        """
-        timestamp = parsed_log.get("timestamp", datetime.now(timezone.utc))
-        source_ip = parsed_log.get("source_ip", "unknown")
-        username = parsed_log.get("username", "")
-        endpoint = parsed_log.get("endpoint", "")
-        user_agent = parsed_log.get("user_agent", "")
-        status_code = parsed_log.get("status_code", 200)
-        bytes_sent = parsed_log.get("bytes_sent", 0)
-        payload = parsed_log.get("payload", "")
+_feature_engineer: FeatureEngineer | None = None
 
-        # ====================================================================
-        # Temporal Features
-        # ====================================================================
-        hour_of_day = timestamp.hour
-        day_of_week = timestamp.weekday()
-        is_weekend = day_of_week in (5, 6)  # Saturday, Sunday
-        is_business_hours = 9 <= hour_of_day < 18  # 9 AM - 6 PM
 
-        # ====================================================================
-        # Frequency Features (aggregated from cache)
-        # ====================================================================
-        login_attempts_per_minute = await self._get_login_attempts_rate(
-            source_ip, timestamp, window_sec=60
-        )
-        requests_per_second = await self._get_request_rate(source_ip, timestamp, window_sec=60)
-        unique_ips_last_hour = await self._get_unique_ips(window_sec=3600)
-        unique_endpoints_accessed = await self._get_unique_endpoints(source_ip, window_sec=3600)
-
-        # ====================================================================
-        # Rate Features
-        # ====================================================================
-        failed_auth_rate = await self._get_failed_auth_rate(source_ip, window_sec=300)
-        error_rate_4xx = float(400 <= status_code < 500)
-        error_rate_5xx = float(500 <= status_code < 600)
-
-        # ====================================================================
-        # Geographic Features
-        # ====================================================================
-        geo_data = self._get_geo_data(source_ip)
-        geographic_distance_km = geo_data.get("distance_km", 0.0)
-        is_known_country = geo_data.get("country", "") in self.known_countries
-        is_known_ip = source_ip in self.known_ips
-
-        # ====================================================================
-        # Behavioral Features
-        # ====================================================================
-        # Log-scale normalization for bytes (avoid huge values)
-        bytes_transferred = np.log1p(bytes_sent)
-
-        time_since_last_activity_sec = await self._get_time_since_last_activity(
-            source_ip, timestamp
-        )
-        session_duration_sec = await self._get_session_duration(source_ip, timestamp)
-
-        # Shannon entropy of payload (detect encrypted/random data)
-        payload_entropy = self._calculate_entropy(payload)
-
-        # ====================================================================
-        # Context Features
-        # ====================================================================
-        is_privileged_user = username.lower() in self.privileged_users
-        is_sensitive_endpoint = any(endpoint.startswith(path) for path in self.sensitive_endpoints)
-        is_known_user_agent = any(ua in user_agent for ua in self.known_user_agents)
-
-        # Update cache with current log
-        await self._update_cache(source_ip, timestamp, parsed_log)
-
-        return LogFeatures(
-            hour_of_day=hour_of_day,
-            day_of_week=day_of_week,
-            is_weekend=is_weekend,
-            is_business_hours=is_business_hours,
-            login_attempts_per_minute=login_attempts_per_minute,
-            requests_per_second=requests_per_second,
-            unique_ips_last_hour=unique_ips_last_hour,
-            unique_endpoints_accessed=unique_endpoints_accessed,
-            failed_auth_rate=failed_auth_rate,
-            error_rate_4xx=error_rate_4xx,
-            error_rate_5xx=error_rate_5xx,
-            geographic_distance_km=geographic_distance_km,
-            is_known_country=is_known_country,
-            is_known_ip=is_known_ip,
-            bytes_transferred=bytes_transferred,
-            time_since_last_activity_sec=time_since_last_activity_sec,
-            session_duration_sec=session_duration_sec,
-            payload_entropy=payload_entropy,
-            is_privileged_user=is_privileged_user,
-            is_sensitive_endpoint=is_sensitive_endpoint,
-            is_known_user_agent=is_known_user_agent,
-        )
-
-    # ========================================================================
-    # Helper Methods (Cache-based aggregations)
-    # ========================================================================
-
-    async def _get_login_attempts_rate(
-        self, source_ip: str, timestamp: datetime, window_sec: int
-    ) -> float:
-        """Get login attempts per minute from Redis cache."""
-        try:
-            from backend.db.cache import get_login_attempts_rate
-
-            return await get_login_attempts_rate(source_ip, window_sec, timestamp)
-        except Exception:
-            # Fallback to mock value if Redis fails
-            return float(np.random.uniform(0, 5))
-
-    async def _get_request_rate(
-        self, source_ip: str, timestamp: datetime, window_sec: int
-    ) -> float:
-        """Get requests per second from Redis cache."""
-        try:
-            from backend.db.cache import get_requests_per_second
-
-            return await get_requests_per_second(source_ip, window_sec, timestamp)
-        except Exception:
-            return float(np.random.uniform(0.1, 2.0))
-
-    async def _get_unique_ips(self, window_sec: int) -> int:
-        """Get unique IPs in time window."""
-        try:
-            from backend.db.cache import get_unique_ips_last_hour
-
-            return await get_unique_ips_last_hour()
-        except Exception:
-            return int(np.random.randint(1, 50))
-
-    async def _get_unique_endpoints(self, source_ip: str, window_sec: int) -> int:
-        """Get unique endpoints accessed by IP."""
-        try:
-            from backend.db.cache import get_unique_endpoints_accessed
-
-            return await get_unique_endpoints_accessed(source_ip)
-        except Exception:
-            return int(np.random.randint(1, 20))
-
-    async def _get_failed_auth_rate(self, source_ip: str, window_sec: int) -> float:
-        """Get failed authentication rate from Redis."""
-        try:
-            from backend.db.cache import get_failed_auth_rate
-
-            return await get_failed_auth_rate(source_ip, window_sec)
-        except Exception:
-            return float(np.random.uniform(0.0, 0.3))
-
-    def _get_geo_data(self, source_ip: str) -> dict[str, Any]:
-        """Get geographic data for IP (requires GeoIP database)."""
-        # TODO: Implement GeoIP lookup
-        return {
-            "country": "US",
-            "distance_km": np.random.uniform(0, 100),
-        }
-
-    async def _get_time_since_last_activity(self, source_ip: str, timestamp: datetime) -> float:
-        """Get time since last activity from Redis."""
-        try:
-            from backend.db.cache import get_time_since_last_activity
-
-            return await get_time_since_last_activity(source_ip, timestamp)
-        except Exception:
-            return float(np.random.uniform(1, 300))
-
-    async def _get_session_duration(self, source_ip: str, timestamp: datetime) -> float:
-        """Get current session duration."""
-        # Simplified: Use time since last activity as proxy
-        time_since = await self._get_time_since_last_activity(source_ip, timestamp)
-        # If recent activity, session is ongoing
-        if time_since < 1800:  # 30 minutes
-            return float(np.random.uniform(10, 3600))
-        return 0.0
-
-    def _calculate_entropy(self, data: str) -> float:
-        """
-        Calculate Shannon entropy of data.
-
-        High entropy (>7.0) suggests encrypted/random data.
-
-        Args:
-            data: String data to analyze
-
-        Returns:
-            Entropy value (0.0 - 8.0 for byte data)
-        """
-        if not data:
-            return 0.0
-
-        # Count byte frequencies
-        from collections import Counter
-
-        byte_counts = Counter(data.encode())
-        total_bytes = len(data)
-
-        # Calculate Shannon entropy
-        entropy = 0.0
-        for count in byte_counts.values():
-            probability = count / total_bytes
-            entropy -= probability * np.log2(probability)
-
-        return float(entropy)
-
-    async def _update_cache(
-        self, source_ip: str, timestamp: datetime, parsed_log: dict[str, Any]
-    ) -> None:
-        """Update Redis cache with log data."""
-        try:
-            from backend.db import cache
-
-            # Record IP activity
-            await cache.record_ip_activity(source_ip)
-
-            # Record request
-            endpoint = parsed_log.get("endpoint", "/")
-            await cache.record_request(source_ip, endpoint, timestamp)
-
-            # Record login attempt if authentication event
-            event_type = parsed_log.get("event_type", "")
-            if "auth" in event_type.lower() or "login" in event_type.lower():
-                success = parsed_log.get("success", False)
-                await cache.record_login_attempt(source_ip, success, timestamp)
-
-        except Exception as e:
-            # Log error but don't fail
-            logger.error("cache_update_failed", source_ip=source_ip, error=str(e))
-
-        # Also update in-memory cache as fallback
-        if source_ip not in self._cache:
-            self._cache[source_ip] = []
-        self._cache[source_ip].append({"timestamp": timestamp, "log": parsed_log})
-
-        # Limit cache size (keep last 1000 entries per IP)
-        if len(self._cache[source_ip]) > 1000:  # noqa: PLR2004
-            self._cache[source_ip] = self._cache[source_ip][-1000:]
+def get_feature_engineer() -> FeatureEngineer:
+    """Return the process-wide ``FeatureEngineer`` so window state persists across requests."""
+    global _feature_engineer
+    if _feature_engineer is None:
+        _feature_engineer = FeatureEngineer()
+    return _feature_engineer

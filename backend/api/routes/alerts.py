@@ -13,7 +13,7 @@ import structlog
 from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
-from backend.api.routes.analysis import AnalysisResult, RiskLevel, RecommendedAction
+from backend.api.routes.analysis import AnalysisResult, RecommendedAction, RiskLevel
 
 logger = structlog.get_logger(__name__)
 
@@ -84,9 +84,10 @@ async def get_anomalies(
     )
 
     # Query database for anomalies
+    from sqlalchemy import func, select
+
     from backend.db.database import get_db
     from backend.db.models import Anomaly
-    from sqlalchemy import select, func
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
 
@@ -172,10 +173,11 @@ async def get_anomaly_detail(anomaly_id: str) -> AnomalyDetail:
     logger.info("fetching_anomaly_detail", anomaly_id=anomaly_id)
 
     # Query database for specific anomaly
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
     from backend.db.database import get_db
     from backend.db.models import Anomaly
-    from sqlalchemy import select
-    from fastapi import HTTPException
 
     async with get_db() as session:
         stmt = select(Anomaly).where(Anomaly.id == int(anomaly_id))
