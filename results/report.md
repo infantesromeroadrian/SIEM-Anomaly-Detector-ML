@@ -1,6 +1,6 @@
 # Evaluation report
 
-Generated 2026-11-07T16:55:09+00:00 from commit `659cfb9709af+dirty`. Every number below is read from `metrics.json`.
+Generated 2026-11-07T17:01:27+00:00 from commit `585a7de4558d`. Every number below is read from `metrics.json`.
 
 Dataset: AIT Log Data Set V2.0, scenario russellmitchell, intranet_server Apache access log (CC-BY-NC-SA-4.0). Split: train 2014 / validation 817 / test 8299 lines (7695 attack, prevalence 0.927).
 Threshold: 99% quantile of benign validation scores. Mean over seeds [0, 1, 2, 3, 4] (std in parentheses; rule baseline is deterministic). PR-AUC of a random scorer equals the prevalence (0.927).
