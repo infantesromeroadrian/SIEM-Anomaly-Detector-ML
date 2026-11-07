@@ -116,6 +116,7 @@ backups/
 logs/
 *.log
 *.log.*
+!tests/fixtures/*
 audit.log
 access.log
 siem.log
@@ -169,8 +170,6 @@ $RECYCLE.BIN/
 site/
 docs/_build/
 
-# History folder (old documentation versions)
-history/*.md
 
 # ============================================================================
 # Temporary Files
@@ -212,3 +211,5 @@ profile_*.txt
 # ============================================================================
 poetry.lock
 Pipfile.lock
+
+# Generated evaluation artefacts are tracked on purpose: results/metrics.json, results/report.md, results/benchmark.json

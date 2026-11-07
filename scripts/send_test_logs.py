@@ -9,8 +9,8 @@ PostgreSQL and displayed in the frontend interface.
 
 import time
 from datetime import datetime
+
 import requests
-import random
 
 API_URL = "http://localhost:8000/api/v1/logs/analyze"
 
@@ -34,27 +34,27 @@ TEST_LOGS = [
     },
     # Anomalous logs (attacks)
     {
-        "log_line": f"Jan 14 03:45:12 server sshd[5678]: Failed password for admin from 185.234.219.45 port 60001 ssh2",
+        "log_line": "Jan 14 03:45:12 server sshd[5678]: Failed password for admin from 185.234.219.45 port 60001 ssh2",
         "source": "auth",
         "description": "🔴 Brute force attempt (3 AM, foreign IP)",
     },
     {
-        "log_line": f"Jan 14 03:45:13 server sshd[5679]: Failed password for root from 185.234.219.45 port 60002 ssh2",
+        "log_line": "Jan 14 03:45:13 server sshd[5679]: Failed password for root from 185.234.219.45 port 60002 ssh2",
         "source": "auth",
         "description": "🔴 Brute force attempt (targeting root)",
     },
     {
-        "log_line": f'Jan 14 22:15:30 web nginx: 45.132.246.198 - - [14/Jan/2026:22:15:30 +0000] "GET /admin\' OR 1=1-- HTTP/1.1" 403 156',
+        "log_line": 'Jan 14 22:15:30 web nginx: 45.132.246.198 - - [14/Jan/2026:22:15:30 +0000] "GET /admin\' OR 1=1-- HTTP/1.1" 403 156',
         "source": "nginx",
         "description": "🔴 SQL Injection attempt",
     },
     {
-        "log_line": f"Jan 14 04:10:45 server sudo: john : command not allowed ; USER=john ; COMMAND=/bin/bash /etc/shadow",
+        "log_line": "Jan 14 04:10:45 server sudo: john : command not allowed ; USER=john ; COMMAND=/bin/bash /etc/shadow",
         "source": "auth",
         "description": "🔴 Privilege escalation attempt",
     },
     {
-        "log_line": f"Jan 14 02:20:15 server systemd[1]: Started cryptominer service",
+        "log_line": "Jan 14 02:20:15 server systemd[1]: Started cryptominer service",
         "source": "syslog",
         "description": "🔴 Cryptomining malware",
     },
@@ -85,7 +85,7 @@ def send_log(log_data: dict) -> dict:
         print("   uvicorn backend.main:app --reload")
         exit(1)
     except requests.exceptions.Timeout:
-        print(f"⚠️  TIMEOUT: Log analysis took too long")
+        print("⚠️  TIMEOUT: Log analysis took too long")
         return {"error": "timeout"}
     except requests.exceptions.HTTPError as e:
         print(f"❌ HTTP ERROR: {e}")
@@ -134,7 +134,7 @@ def main():
         result = send_log(log_data)
 
         if "error" in result:
-            print(f"❌ Failed to analyze\n")
+            print("❌ Failed to analyze\n")
             results["errors"] += 1
             continue
 
@@ -160,7 +160,7 @@ def main():
         print(f"   • Action: {action}")
 
         if reasons:
-            print(f"   • Reasons:")
+            print("   • Reasons:")
             for reason in reasons[:3]:  # Show top 3
                 print(f"      - {reason}")
 

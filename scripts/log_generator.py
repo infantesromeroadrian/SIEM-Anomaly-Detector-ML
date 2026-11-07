@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Continuous Log Generator for SIEM Demo.
+DEMO ONLY - Synthetic continuous log generator for the SIEM UI.
+
+The traffic is invented. It is NOT used for any reported metric (see
+results/report.md, produced from the public AIT-LDSv2 dataset).
 
 Simulates realistic security log traffic by sending logs continuously
 to the SIEM API at configurable intervals. Useful for demos, testing,
@@ -18,7 +21,7 @@ import argparse
 import os
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import requests
@@ -356,7 +359,7 @@ def main() -> None:
                     f"⚠️  API returned status {health.status_code}, retrying... ({attempt}/{max_retries})"
                 )
                 time.sleep(retry_delay)
-        except Exception as e:
+        except Exception:
             if attempt < max_retries:
                 print(f"⏳ Waiting for API... ({attempt}/{max_retries})")
                 time.sleep(retry_delay)
