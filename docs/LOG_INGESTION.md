@@ -463,7 +463,7 @@ curl http://localhost:8000/metrics | grep siem_logs_analyzed_total
 
 ```bash
 # Últimas anomalías
-curl -s "http://localhost:8000/api/v1/anomalies?limit=10" | jq '.anomalies[] | {risk: .risk_score, level: .risk_level, ip: .features.geographic}'
+curl -s "http://localhost:8000/api/v1/anomalies?limit=10" | jq '.anomalies[] | {risk: .risk_score, level: .risk_level, known_ip: .features.context.is_known_ip}'
 
 # Frontend
 open http://localhost:5173

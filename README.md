@@ -1,704 +1,206 @@
-# 🛡️ SIEM Anomaly Detector
+# SIEM Anomaly Detector
 
-**Real-time Security Information and Event Management with ML-based Anomaly Detection**
+> **Research prototype / portfolio project. Not a product.** It is a small, reproducible study of
+> unsupervised anomaly detection on web-server logs, wrapped in a FastAPI service and a React dashboard.
+> It has not been run against production traffic and makes no claims about cost savings, false-positive
+> reduction or competitiveness with commercial SIEMs.
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-green)](https://fastapi.tiangolo.com/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+## Headline finding
 
----
+**On the same host, a one-line volumetric rule ("requests from the same IP in the last 60 s") matches the ML
+(F1 0.999, FPR 0 %). But its threshold does not transfer to other hosts (FPR 55.7 % on benign mail/cloud
+traffic), while Isolation Forest stays at 0.02 %. The measured value of the ML is in transfer across hosts and
+in low-volume attacks (recall 0.78 [0.57, 0.91]).**
 
-## 📋 Tabla de Contenidos
+Caveats that go with those figures: the mail/cloud lines are unlabelled and benign only *by convention* of the
+dataset (labels exist only for files containing attacks); that cross-host evaluation was *added after the first
+test run* (it adds a measurement, it changes no threshold or protocol); the low-volume subset is 19 lines, so the
+interval is wide; and it is one scenario on one dataset. Isolation Forest's low cross-host FPR shows it is not
+fooled by those hosts' bursts, not that it is production-ready.
 
-- [Descripción](#-descripción)
-- [Screenshots](#-screenshots)
-- [Características](#-características)
-- [Arquitectura](#-arquitectura)
-- [Instalación](#-instalación)
-- [Uso](#-uso)
-- [API Reference](#-api-reference)
-- [ML Models](#-ml-models)
-- [Despliegue](#-despliegue)
-- [Roadmap](#-roadmap)
+Recommended detection from this study: **rule OR Isolation Forest** (`combined_rule_or_isolation_forest`) with
+thresholds fitted per host; reusing the rule's threshold across hosts is not advisable.
 
----
+## What it does
 
-## 🎯 Descripción
+- Parses Apache/Nginx access logs, syslog, `auth.log` and iptables lines (`backend/parsers`).
+- Computes 21 deterministic, causal sliding-window features per event (`backend/ml/features.py`).
+- Scores events with an unsupervised Isolation Forest (`backend/ml/ensemble.py`). DBSCAN and GMM remain as
+  opt-in components with weight 0 by default (see below).
+- Serves scores through a FastAPI API, stores anomalies in PostgreSQL, shows them in a React dashboard.
+- Evaluates everything on a public labelled dataset with a leak-free temporal protocol (`backend/eval`).
 
-**SIEM Anomaly Detector** es un sistema de detección de anomalías en logs de seguridad que utiliza **Machine Learning no supervisado** para identificar comportamientos sospechosos sin necesidad de reglas predefinidas.
+Out of scope: deep learning, cloud deployment, alert delivery (Slack/e-mail/PagerDuty settings exist in
+`config.py` but are not implemented), authentication on the API, multi-worker operation.
 
-### ¿Por qué este proyecto?
+## Results
 
-Los SIEM tradicionales dependen de **reglas estáticas** que:
-- ❌ No detectan ataques **0-day** (nunca vistos)
-- ❌ Generan **falsos positivos** excesivos
-- ❌ Requieren **actualización manual constante**
-
-Este SIEM usa **clustering ML** para:
-- ✅ Detectar anomalías **sin ejemplos previos**
-- ✅ Adaptarse automáticamente a **nuevos patrones**
-- ✅ Proporcionar **scores de riesgo interpretables**
-
-### 💰 Valor de Negocio
-
-| Métrica | Mejora |
-|---------|--------|
-| **Reducción de False Positives** | 80% (90% → 10%) |
-| **Tiempo de Detección** | 99.7% más rápido (<1min vs 4-8h) |
-| **Ahorro Anual** | ~$310k vs SIEM tradicional |
-| **Throughput** | 125 logs/segundo |
-| **Precision** | >90% en test set |
-
-📊 **[Ver Presentación Ejecutiva](docs/SIEM_Executive_Overview.pdf)** - Documento completo con business case, ROI, y comparativa con competidores (Splunk, QRadar, Elastic)
-
-### ⚡ Quick Demo
+Reproduce with one command (downloads ~1 MB, trains, evaluates, benchmarks, refreshes this table):
 
 ```bash
-# 1. Clonar e iniciar (requiere Docker)
-git clone https://github.com/tu-usuario/SIEM-Anomaly-Detector.git
-cd SIEM-Anomaly-Detector
-docker compose --profile demo up -d
-
-# 2. Esperar 30 segundos y abrir dashboard
-# Frontend: http://localhost:5173
-# API Docs: http://localhost:8000/docs
-
-# 3. Ver logs generándose automáticamente
-docker logs siem-log-generator -f
-
-# El sistema está detectando anomalías en tiempo real!
+make install && make reproduce
 ```
 
----
+Every number in this section is generated from `results/metrics.json` and `results/benchmark.json`
+by `scripts/update_readme.py`; a test fails if the block is stale. The full report with all models,
+ablations and per-attack-type recall is in [`results/report.md`](results/report.md).
 
-## 📸 Screenshots
+<!-- RESULTS:START (generated by scripts/update_readme.py from results/*.json; do not edit) -->
 
-### Dashboard en Tiempo Real
+Dataset: AIT-LDSv2 `russellmitchell`, Apache access log of `intranet_server` (CC-BY-NC-SA-4.0). Train 2014 / validation 817 / test 8299 lines; the test period contains 7695 attack lines (prevalence 0.927), so precision and PR-AUC are inflated by the base rate (a random scorer has PR-AUC = 0.927; base rate is 0 in train and validation by construction). "FPR (other hosts)" is the alert rate on 15003 unlabelled, benign-by-convention test-day lines from two other web vhosts. Threshold: 99% quantile of benign validation scores. Mean ± std over 5 seeds; the rule baseline is deterministic.
+
+**Variant `all_features`** (pre-registered, held-out)
+
+| Model | Precision | Recall | F1 | PR-AUC | FPR (test benign) | FPR (other hosts) | Recall on low-rate attacks [Wilson 95%] |
+|---|---|---|---|---|---|---|---|
+| rule_requests_per_60s | 1.000 ± 0.000 | 0.998 ± 0.000 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.000 ± 0.000 | 0.5572 (n=15003) | 0.000 [0.00, 0.17] (n=19) |
+| isolation_forest | 0.999 ± 0.000 | 0.999 ± 0.001 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.016 ± 0.006 | 0.0002 (n=15003) | 0.779 [0.57, 0.91] (n=19) |
+| combined_rule_or_isolation_forest | 0.999 ± 0.000 | 0.999 ± 0.000 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.016 ± 0.006 | 0.5572 (n=15003) | 0.768 [0.57, 0.91] (n=19) |
+
+**Variant `no_calendar_features`** (post-hoc, in-sample design decision)
+
+| Model | Precision | Recall | F1 | PR-AUC | FPR (test benign) | FPR (other hosts) | Recall on low-rate attacks [Wilson 95%] |
+|---|---|---|---|---|---|---|---|
+| rule_requests_per_60s | 1.000 ± 0.000 | 0.998 ± 0.000 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.000 ± 0.000 | 0.5572 (n=15003) | 0.000 [0.00, 0.17] (n=19) |
+| isolation_forest | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.016 ± 0.004 | 0.0001 (n=15003) | 0.905 [0.69, 0.97] (n=19) |
+| combined_rule_or_isolation_forest | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.999 ± 0.000 | 1.000 ± 0.000 | 0.015 ± 0.004 | 0.5573 (n=15003) | 0.905 [0.69, 0.97] (n=19) |
+
+Throughput (`make benchmark`, Intel(R) Core(TM) Ultra 9 185H, Python 3.12.13, single process, parse + features + score only; no HTTP or database): 169 events/s, latency p50 5.2 ms / p95 9.4 ms.
+
+<!-- RESULTS:END -->
+
+### How to read these numbers
+
+- **The task is easy.** The test period is dominated by two volumetric scanners (dirb, wpscan). Do not read the
+  high F1 as evidence of a strong detector. Base rate in train and validation is 0 by construction and 0.927 in
+  test, so precision and PR-AUC are inflated; the more informative columns are FPR, recall per attack type and the
+  low-rate subset.
+- **"FPR (other hosts)" is a cross-host transfer test, not a same-host false-alarm rate.** It scores the benign
+  test-day traffic of two other web vhosts with models and thresholds learned on `intranet_server`. The volume
+  rule fires on more than half of those lines (a busy page load is a burst of requests) while Isolation Forest
+  stays near zero. That shows the rule's threshold is host-specific; it does not show Isolation Forest is
+  production-ready. Those logs are unlabelled and benign only by the dataset's convention (labels exist only for
+  files with attack lines).
+- **Low-rate attacks: 19 lines.** The Wilson interval is wide. Per-type recall for `webshell_upload` (3 lines),
+  `escalate` (4) and `service_scan` (12) is anecdotal.
+- **The original "ensemble" was effectively Isolation Forest.** DBSCAN and GMM saturate to a constant score on
+  the pre-registered variant (rows `component_*_only` and `ensemble_legacy_*`), because their score normalisers
+  are hard-coded and because `day_of_week`/`is_weekend` fall outside the support of a 2-day training window.
+  Dropping those two features (post-hoc variant) lets the GMM contribute, but it then fires on most other-host
+  benign lines. **Decision: DBSCAN and GMM are retired from the default configuration** (weight 0: not trained, not
+  scored). They remain in code behind `ENSEMBLE_WEIGHTS` for experiments; the evidence for keeping them is nil.
+- **`no_calendar_features` is post-hoc.** It was added after inspecting the first run, and is reported, labelled
+  as in-sample with respect to that design decision, next to the pre-registered `all_features` variant.
+- One dataset, one scenario, one host, one attack campaign. Nothing here generalises to other environments.
+
+### Evaluation protocol
+
+| Item | Choice |
+|---|---|
+| Dataset | [AIT Log Data Set V2.0](https://doi.org/10.5281/zenodo.5789064) (Landauer et al.), scenario `russellmitchell`, `intranet_server` Apache access log. License CC BY-NC-SA 4.0 (non-commercial); data are downloaded, never committed. |
+| Labels | Per-line attack labels shipped with the dataset (lines not listed are benign). |
+| Split | By UTC calendar day, fixed in advance: train 21-22 Jan 2022, validation 23 Jan (benign), test from 24 Jan (attack campaign). A guard aborts if any attack line falls in train/validation. |
+| Training | Unsupervised; labels are never used for fitting. |
+| Threshold | 99% quantile of each model's scores on benign validation data. The test set plays no role. |
+| Test use | Scored once per model and seed; seeds 0-4 declared up front. |
+| Baselines | Rule (requests per IP in 60 s) and Isolation Forest alone, same split and same threshold rule. Also reported: rule OR Isolation Forest, the legacy 0.5/0.3/0.2 ensemble and each component alone. |
+| Other hosts | Benign test-day lines of the `mail` and `cloud` vhosts of `webserver` (unlabelled, benign by dataset convention), scored without retraining, to estimate false alarms on more benign volume. They come from different hosts, so this is a distribution-shift test. |
+| Test integrity | The other-host evaluation, the combined detector and the Wilson intervals were added after the first test run; they add measurements and do not change the headline protocol or thresholds. |
+| Integrity | `datasets/*.manifest.json` pins SHA-256 of every downloaded file. |
+| Unparsed lines | Lines the parser cannot read (e.g. HTTP 408 with request `"-"`) are skipped and counted in `metrics.json`. |
+
+## Quick start
+
+```bash
+./scripts/init_env.sh          # creates .env with random secrets (compose refuses to start without them)
+docker compose up --build      # API :8000, UI :5173, Grafana :3000 (all bound to 127.0.0.1)
+```
+
+On first start the API container trains a **synthetic demo model** if none exists (clearly logged and labelled
+in the model metadata). To serve the evaluated model instead, run `make reproduce` and copy
+`models/ensemble_*.joblib` into the `models_data` volume, or run the API locally with `MODEL_PATH=./models`.
+
+```bash
+curl -s -X POST localhost:8000/api/v1/logs/analyze -H 'content-type: application/json' \
+  -d '{"log_line":"10.0.0.5 - - [24/Jan/2022:03:57:01 +0000] \"POST /sdk HTTP/1.1\" 404 360 \"-\" \"Nmap Scripting Engine\"","source":"nginx"}'
+```
+
+Without a loaded model the analysis endpoints return `503`; `/stats` and `/stats/timeseries` return `503`
+when the database is unreachable (they never invent numbers). `/health` runs real probes against
+PostgreSQL, Redis and the model.
+
+## Architecture
+
+```
+log line -> parser -> FeatureEngineer (in-process sliding windows) -> ensemble scoring -> API
+                                                                       |-> PostgreSQL (anomalies, logs)
+                                                                       '-> Prometheus metrics / Grafana
+React dashboard <---- /api/v1/{stats,anomalies,stats/timeseries}
+```
+
+More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/ML_ARCHITECTURE.md`](docs/ML_ARCHITECTURE.md),
+[`docs/LOG_INGESTION.md`](docs/LOG_INGESTION.md).
 
 ![Dashboard](docs/01-Dashboard.png)
+![Recent anomalies](docs/04-RecentAnomalies.png)
 
-*Dashboard principal mostrando métricas en tiempo real: logs analizados, anomalías detectadas, tasa de anomalías, y estado del sistema.*
+The screenshots show the dashboard after replaying part of the test period through the API with the evaluated
+model. The risk levels (medium/high) come from fixed heuristic cut-offs (0.4/0.6/0.8), which are **not**
+calibrated; the evaluation above uses thresholds fixed on validation data instead.
 
----
-
-### Arquitectura del Modelo ML
-
-![ML Architecture](docs/02-ML-ModelArchitecture.png)
-
-*Visualización de la arquitectura del ensemble de Machine Learning con 3 algoritmos complementarios: Isolation Forest (50%), DBSCAN (30%), y Gaussian Mixture Model (20%).*
-
----
-
-### Pipeline de Predicción
-
-![ML Pipeline](docs/03-ModelPipeline.png)
-
-*Pipeline interactivo que muestra el flujo completo desde la ingesta del log hasta la decisión de seguridad, incluyendo parsing, feature engineering, predicción ML, y clasificación de riesgo.*
-
----
-
-### Lista de Anomalías Detectadas
-
-![Recent Anomalies](docs/04-RecentAnomalies.png)
-
-*Vista operativa de las anomalías detectadas con detalles completos: risk score, level, timestamp, source IP, event type, razones de detección, y acciones recomendadas.*
-
----
-
-## 🚀 Características
-
-### Core Features
-
-- 🧠 **Ensemble ML**: Isolation Forest + DBSCAN + GMM
-- 📊 **Multi-parser**: Syslog, Nginx, Auth logs, Firewall
-- ⚡ **Real-time**: Análisis de logs en <100ms
-- 🔄 **Online Learning**: Re-entrenamiento automático con feedback
-- 📈 **Dashboard**: Visualización de anomalías en tiempo real
-- 🐳 **Production-ready**: Docker + Kubernetes manifests
-
-### ML Capabilities
-
-| Algoritmo | Propósito | Ventaja |
-|-----------|-----------|---------|
-| **Isolation Forest** | Detección rápida de outliers | O(n), no requiere escalado |
-| **DBSCAN** | Clusters de forma irregular | Detecta patrones de ataque complejos |
-| **GMM** | Modelado probabilístico | Scores de confianza interpretables |
-
-### Supported Log Types
-
-- ✅ **Syslog** (RFC 3164/5424)
-- ✅ **Nginx Access/Error logs**
-- ✅ **SSH Auth logs** (/var/log/auth.log)
-- ✅ **Firewall logs** (iptables, pfSense)
-- 🚧 **Windows Event Logs** (próximamente)
-- 🚧 **Custom JSON logs** (próximamente)
-
----
-
-## 🏗️ Arquitectura
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      SIEM ANOMALY DETECTOR                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  [Log Sources]                                                  │
-│      ├─ Syslog (UDP 514)                                        │
-│      ├─ File watchers                                           │
-│      └─ API ingestion                                           │
-│           ↓                                                     │
-│  [Parsers Layer]                                                │
-│      ├─ SyslogParser                                            │
-│      ├─ NginxParser                                             │
-│      └─ AuthParser                                              │
-│           ↓                                                     │
-│  [Feature Engineering]                                          │
-│      • login_attempts_per_minute                                │
-│      • unique_ips_last_hour                                     │
-│      • failed_auth_rate                                         │
-│      • bytes_transferred                                        │
-│      • geographic_distance                                      │
-│      • time_since_last_activity                                 │
-│           ↓                                                     │
-│  [ML Ensemble]                                                  │
-│      ├─ Isolation Forest  (score_1)                             │
-│      ├─ DBSCAN           (score_2)                             │
-│      └─ GMM              (score_3)                             │
-│           ↓                                                     │
-│  [Aggregation]                                                  │
-│      weighted_score = 0.5*score_1 + 0.3*score_2 + 0.2*score_3  │
-│           ↓                                                     │
-│  [Decision Layer]                                               │
-│      • risk_score > 0.8 → Alert                                 │
-│      • risk_score > 0.6 → Monitor                               │
-│      • risk_score < 0.6 → Normal                                │
-│           ↓                                                     │
-│  [Storage & Actions]                                            │
-│      ├─ PostgreSQL (anomalías históricas)                       │
-│      ├─ Redis (cache, rate limiting)                            │
-│      └─ Webhook alerts (Slack, email, PagerDuty)               │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-- **Backend**: FastAPI (async Python)
-- **ML**: Scikit-learn, NumPy, Pandas
-- **Database**: PostgreSQL 15 + TimescaleDB (time-series)
-- **Cache**: Redis 7
-- **Containers**: Docker + Docker Compose
-- **Orchestration**: Kubernetes (optional)
-- **Monitoring**: Prometheus + Grafana
-- **Testing**: Pytest + Hypothesis
-
----
-
-## 📦 Instalación
-
-### Prerrequisitos
-
-- Python 3.10+
-- Docker & Docker Compose (para despliegue)
-- PostgreSQL 15+ (opcional, se puede usar Docker)
-- Redis 7+ (opcional, se puede usar Docker)
-
-### Opción 1: Desarrollo Local
+## Development
 
 ```bash
-# Clonar repositorio
-git clone https://github.com/tu-usuario/SIEM-Anomaly-Detector.git
-cd SIEM-Anomaly-Detector
-
-# Crear entorno virtual
-python3 -m venv venv
-source venv/bin/activate
-
-# Instalar dependencias
-pip install -e ".[dev]"
-
-# Configurar variables de entorno
-cp .env.example .env
-nano .env  # Editar según tu configuración
-
-# Entrenar modelo inicial (usa logs de ejemplo)
-python scripts/train_initial_model.py
-
-# Iniciar servidor de desarrollo
-uvicorn backend.main:app --reload --port 8000
+make test        # pytest + coverage gate (70%)
+make lint        # ruff check + ruff format --check
+make benchmark   # throughput (hardware recorded in results/benchmark.json)
+make frontend-build
 ```
 
-### Opción 2: Docker Compose (Recomendado)
-
-```bash
-# Clonar y configurar
-git clone https://github.com/tu-usuario/SIEM-Anomaly-Detector.git
-cd SIEM-Anomaly-Detector
-cp .env.example .env
-
-# Construir y levantar todos los servicios
-docker-compose up -d
-
-# Verificar logs
-docker-compose logs -f api
-
-# Entrenar modelo inicial
-docker-compose exec api python scripts/train_initial_model.py
-```
-
-**Servicios disponibles:**
-- **API:** http://localhost:8000
-- **API Docs:** http://localhost:8000/docs (Swagger)
-- **Frontend Dashboard:** http://localhost:5173
-- **Grafana:** http://localhost:3000 (admin/admin)
-- **Prometheus:** http://localhost:9090
-
----
-
-## 🎮 Uso
-
-### 1. Analizar un Log Individual
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/logs/analyze" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "log_line": "Jan 13 03:45:12 server sshd[1234]: Failed password for admin from 192.168.1.100 port 22 ssh2",
-    "source": "auth.log"
-  }'
-```
-
-**Respuesta:**
-
-```json
-{
-  "is_anomaly": true,
-  "risk_score": 0.87,
-  "confidence": "high",
-  "features": {
-    "login_attempts_last_minute": 15,
-    "unique_ips_last_hour": 1,
-    "failed_auth_rate": 1.0,
-    "hour_of_day": 3,
-    "is_known_ip": false
-  },
-  "reasons": [
-    "Login attempt at unusual hour (3 AM)",
-    "15 failed attempts in 1 minute (DDoS indicator)",
-    "Unknown IP address (not in whitelist)",
-    "Username 'admin' commonly targeted"
-  ],
-  "recommended_action": "BLOCK_IP",
-  "similar_anomalies": 23
-}
-```
-
-### 2. Obtener Top Anomalías
-
-```bash
-curl "http://localhost:8000/api/v1/anomalies?limit=10&hours=24"
-```
-
-### 3. Estadísticas del Sistema
-
-```bash
-curl "http://localhost:8000/api/v1/stats"
-```
-
-**Respuesta:**
-
-```json
-{
-  "logs_analyzed_24h": 1245678,
-  "anomalies_detected_24h": 342,
-  "anomaly_rate": 0.027,
-  "model_version": "v1.2.3",
-  "last_retrain": "2026-01-13T22:15:30Z",
-  "models": {
-    "isolation_forest": {
-      "contamination": 0.03,
-      "n_estimators": 100,
-      "accuracy": 0.94
-    },
-    "dbscan": {
-      "eps": 1.5,
-      "min_samples": 50,
-      "n_clusters": 7
-    },
-    "gmm": {
-      "n_components": 3,
-      "bic": 12345.67
-    }
-  }
-}
-```
-
-### 4. Re-entrenar Modelo con Feedback
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/model/retrain" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "feedback": [
-      {"log_id": "abc123", "is_true_positive": true},
-      {"log_id": "def456", "is_true_positive": false}
-    ]
-  }'
-```
-
----
-
-## 📚 API Reference
-
-### Endpoints
-
-| Method | Endpoint | Descripción |
-|--------|----------|-------------|
-| `POST` | `/api/v1/logs/analyze` | Analizar un log individual |
-| `POST` | `/api/v1/logs/batch` | Analizar múltiples logs |
-| `GET` | `/api/v1/anomalies` | Obtener anomalías detectadas |
-| `GET` | `/api/v1/anomalies/{id}` | Detalle de una anomalía |
-| `GET` | `/api/v1/stats` | Estadísticas del sistema |
-| `POST` | `/api/v1/model/retrain` | Re-entrenar con feedback |
-| `GET` | `/api/v1/health` | Health check |
-| `GET` | `/metrics` | Métricas Prometheus |
-
-**Documentación completa**: http://localhost:8000/docs (OpenAPI/Swagger)
-
----
-
-## 🧠 ML Models
-
-### Ensemble Strategy
-
-El sistema usa un **ensemble ponderado** de 3 algoritmos:
-
-```python
-final_score = (
-    0.5 * isolation_forest_score +
-    0.3 * dbscan_score +
-    0.2 * gmm_score
-)
-```
-
-**Justificación de pesos:**
-- **Isolation Forest (50%)**: Mejor para detección rápida de outliers extremos
-- **DBSCAN (30%)**: Captura patrones de ataque coordinados (DDoS, port scans)
-- **GMM (20%)**: Proporciona confianza probabilística para casos ambiguos
-
-### Feature Engineering
-
-**Features extraídas de logs:**
-
-```python
-{
-    # Temporal
-    'hour_of_day': int,              # 0-23
-    'day_of_week': int,              # 0-6 (0=Lunes)
-    'is_weekend': bool,
-    
-    # Frecuencia
-    'login_attempts_per_minute': float,
-    'requests_per_second': float,
-    'unique_ips_last_hour': int,
-    
-    # Tasas
-    'failed_auth_rate': float,       # 0.0-1.0
-    'error_rate_5xx': float,
-    
-    # Geográfico
-    'geographic_distance_km': float, # Desde IP habitual
-    'is_known_country': bool,
-    
-    # Comportamiento
-    'bytes_transferred': int,
-    'time_since_last_activity_sec': float,
-    'session_duration_sec': float,
-    
-    # Contexto
-    'is_privileged_user': bool,
-    'is_sensitive_endpoint': bool,
-    'user_agent_entropy': float      # Detecta bots
-}
-```
-
-### Retraining Strategy
-
-El modelo se re-entrena automáticamente:
-- **Scheduled**: Cada 24 horas (con logs del día)
-- **Triggered**: Cuando hay 100+ feedbacks nuevos
-- **Manual**: Endpoint `/api/v1/model/retrain`
-
----
-
-## 🚢 Despliegue
-
-### Producción con Docker Compose
-
-```bash
-# 1. Configurar secrets
-cp .env.example .env
-nano .env  # Cambiar POSTGRES_PASSWORD, SECRET_KEY, etc.
-
-# 2. Construir para producción
-docker-compose -f docker-compose.prod.yml build
-
-# 3. Levantar servicios
-docker-compose -f docker-compose.prod.yml up -d
-
-# 4. Verificar salud
-curl http://localhost:8000/api/v1/health
-
-# 5. Ver logs
-docker-compose -f docker-compose.prod.yml logs -f api
-```
-
-### Kubernetes (Producción Escalable)
-
-```bash
-# 1. Crear namespace
-kubectl create namespace siem
-
-# 2. Aplicar secrets
-kubectl apply -f k8s/secrets.yaml -n siem
-
-# 3. Desplegar base de datos (StatefulSet)
-kubectl apply -f k8s/postgres.yaml -n siem
-kubectl apply -f k8s/redis.yaml -n siem
-
-# 4. Desplegar API (Deployment + HPA)
-kubectl apply -f k8s/api-deployment.yaml -n siem
-kubectl apply -f k8s/api-service.yaml -n siem
-kubectl apply -f k8s/api-hpa.yaml -n siem
-
-# 5. Verificar pods
-kubectl get pods -n siem
-
-# 6. Exponer servicio (Ingress)
-kubectl apply -f k8s/ingress.yaml -n siem
-```
-
-### Scaling Considerations
-
-- **API**: Auto-scaling con HPA (2-10 pods)
-- **PostgreSQL**: StatefulSet con persistent volumes
-- **Redis**: Redis Cluster para alta disponibilidad
-- **ML Models**: Modelos cargados en memoria (considerar Redis para cache)
-
----
-
-## 🔧 Configuración
-
-### Variables de Entorno
-
-```bash
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-LOG_LEVEL=INFO
-
-# Database
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=siem_db
-POSTGRES_USER=siem_user
-POSTGRES_PASSWORD=changeme  # ⚠️ Cambiar en producción
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-
-# ML Configuration
-MODEL_CONTAMINATION=0.03
-MODEL_RETRAIN_INTERVAL_HOURS=24
-ENSEMBLE_WEIGHTS=0.5,0.3,0.2  # IF, DBSCAN, GMM
-
-# Alerting
-ALERT_THRESHOLD_HIGH=0.8
-ALERT_THRESHOLD_MEDIUM=0.6
-SLACK_WEBHOOK_URL=https://hooks.slack.com/...
-EMAIL_SMTP_HOST=smtp.gmail.com
-EMAIL_RECIPIENTS=admin@example.com,security@example.com
-
-# Security
-SECRET_KEY=your-secret-key-here  # ⚠️ Generar con: openssl rand -hex 32
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ORIGINS=http://localhost:3000
-
-# Monitoring
-PROMETHEUS_ENABLED=true
-PROMETHEUS_PORT=9090
-```
-
----
-
-## 🧪 Testing
-
-```bash
-# Instalar dependencias de testing
-pip install -e ".[dev]"
-
-# Ejecutar todos los tests
-pytest
-
-# Con coverage
-pytest --cov=backend --cov-report=html
-
-# Solo tests unitarios
-pytest tests/test_ml.py
-
-# Solo tests de integración
-pytest tests/test_integration.py -v
-
-# Tests con logs detallados
-pytest -vv --log-cli-level=DEBUG
-```
-
-### Test Coverage Goal: >80%
+CI (`.github/workflows/ci.yml`): ruff, pytest with coverage, frontend build, `docker build` (no push).
+Actions are pinned by SHA and the workflow has read-only permissions.
+
+## Limitations
+
+- Features are computed in-process: state is lost on restart and **more than one API worker would each see a
+  partial window**. A shared (Redis-backed) aggregator is needed before scaling out.
+- The alert levels (0.4/0.6/0.8) and the sigmoid normalisers in `backend/ml/scoring.py` are heuristics. Retraining on new data requires re-fixing a threshold on benign validation data.
+- The `is_known_ip` feature is constant in training under this protocol (all training IPs are "known"), so the
+  unsupervised models cannot learn from it.
+- Syslog timestamps carry no year; the parser assumes the current year. Unparseable lines fall back to the
+  ingestion time, which a hostile source can exploit (see below).
+- `joblib` model files are pickles: only load models you trained yourself.
+- No API authentication, rate limiting or audit trail. Do not expose it beyond localhost.
+- Database tables are created at start-up only when `DEBUG=true`; no migrations are shipped.
+- Dataset is CC BY-NC-SA 4.0: results here are for research/portfolio use.
+
+## Adversarial risks of the detector itself
+
+1. **Poisoning the baseline.** Models are fitted on "benign" traffic. An attacker active during the training
+   window teaches the model that their behaviour is normal. Mitigation: train on audited periods, keep a
+   held-out check, version and diff model files. Not implemented here.
+2. **Mimicry / low-and-slow evasion.** Detection leans on per-IP request volume (the rule baseline matches the
+   ML). An attacker who stays under the per-minute rate, rotates source IPs or imitates browser requests is
+   largely invisible to these features. The 19 low-rate attack lines are the only evidence of non-volumetric
+   detection and are too few to claim robustness.
+3. **Log injection against parsers.** Attacker-controlled fields (URL, user agent, usernames) are parsed by
+   regexes and logged. Crafted lines can break parsing (falling back to ingestion time and skewing the time
+   windows), forge timestamps to flush windows, or spray source addresses (memory is bounded by
+   `MAX_TRACKED_IPS`/`MAX_EVENTS_PER_IP`, but accuracy still degrades). Treat parsed fields as untrusted data.
+
+## Repository layout
 
 ```
-backend/ml/         ✅ 95% coverage
-backend/api/        ✅ 90% coverage
-backend/parsers/    ✅ 85% coverage
-backend/db/         ✅ 80% coverage
+backend/        FastAPI app, parsers, features, ensemble, evaluation (backend/eval)
+frontend/       React + Vite dashboard
+scripts/        demo-model trainer, synthetic log generator (DEMO ONLY), benchmark, README updater
+datasets/       SHA-256 manifest of the evaluation data (data itself is never committed)
+results/        metrics.json, report.md, benchmark.json (generated)
+tests/          pytest suite (fixtures contain a few real dataset lines, see tests/fixtures/README.md)
 ```
 
----
+`scripts/log_generator.py` produces invented traffic for UI demos only and is not used for any reported metric.
 
-## 📊 Monitoreo
+## License
 
-### Métricas Prometheus
-
-El sistema expone métricas en `/metrics`:
-
-```prometheus
-# Logs procesados
-siem_logs_processed_total{source="auth.log"} 1234567
-
-# Anomalías detectadas
-siem_anomalies_detected_total{risk_level="high"} 342
-
-# Latencia de análisis
-siem_analysis_duration_seconds{quantile="0.95"} 0.089
-
-# Modelos cargados
-siem_models_loaded{model="isolation_forest"} 1
-```
-
-### Dashboard Grafana
-
-Importar dashboard desde: `docs/grafana-dashboard.json`
-
-**Panels incluidos:**
-- Logs procesados por minuto
-- Tasa de anomalías (últimas 24h)
-- Top 10 IPs anómalas
-- Distribución de risk scores
-- Latencia p50, p95, p99
-- Uso de memoria/CPU
-
----
-
-## 🗺️ Roadmap
-
-### v1.0 (Completado ✅)
-- ✅ Ensemble ML (IF + DBSCAN + GMM)
-- ✅ Parsers (Syslog, Nginx, Auth, Firewall)
-- ✅ API REST con FastAPI
-- ✅ Docker Compose con 6 servicios
-- ✅ Tests unitarios + integración
-- ✅ Dashboard web (React + TypeScript)
-- ✅ Diagrama ML interactivo
-- ✅ Generador continuo de logs
-- ✅ Documentación ejecutiva (HTML/PDF)
-- ✅ Monitoring (Prometheus + Grafana)
-
-### v1.1 (En Desarrollo 🚧)
-- 🚧 Autenticación JWT
-- 🚧 RBAC (roles: admin, analyst, viewer)
-- 🚧 Auto-response actions (bloqueo automático)
-- 🚧 Alertas por Slack/Email/PagerDuty
-- 🚧 Retraining pipeline automático
-
-### v1.2 (Q2 2026)
-- 📋 Deep Learning (LSTM para sequences)
-- 📋 Integración con Wazuh/Suricata
-- 📋 Multi-tenancy (múltiples organizaciones)
-- 📋 RBAC (control de acceso basado en roles)
-
-### v2.0 (Q3 2026)
-- 📋 Threat Intelligence feeds (MISP, AlienVault)
-- 📋 Automated response (block IPs via firewall API)
-- 📋 Behavioral profiling (per-user baselines)
-- 📋 Cloud-native (AWS Lambda, Cloud Functions)
-
----
-
-## 🤝 Contribuciones
-
-¡Las contribuciones son bienvenidas! Por favor:
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-**Antes de contribuir:**
-- Ejecuta `ruff format .` (formatting)
-- Ejecuta `ruff check .` (linting)
-- Ejecuta `mypy backend --strict` (type checking)
-- Asegúrate de que `pytest` pasa al 100%
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
-
----
-
-## 👤 Autor
-
-**Adrian Infantes Romero**
-- GitHub: [@tu-usuario](https://github.com/tu-usuario)
-- LinkedIn: [tu-perfil](https://linkedin.com/in/tu-perfil)
-- Email: tu.email@example.com
-
----
-
-## 🙏 Agradecimientos
-
-- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
-- [Scikit-learn](https://scikit-learn.org/) - ML library
-- [Isolation Forest Paper](https://cs.nju.edu.cn/zhouzh/zhouzh.files/publication/icdm08b.pdf) - Original research
-- [AI-RedTeam-Course](../) - Proyecto educativo base
-
----
-
-## 📚 Documentación Adicional
-
-### Para Management
-- 📊 **[Executive Overview (PDF)](docs/SIEM_Executive_Overview.pdf)** - Presentación ejecutiva con business case y ROI
-- 📄 **[Executive Overview (HTML)](docs/EXECUTIVE_OVERVIEW.html)** - Versión web interactiva
-- 📋 **[Executive Overview (Markdown)](docs/EXECUTIVE_OVERVIEW.md)** - Versión texto
-
-### Para Equipos Técnicos
-- 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)** - Arquitectura técnica completa con diagramas
-- 🧠 **[ML Architecture](docs/ML_ARCHITECTURE.md)** - Detalles profundos de los modelos ML
-- 📥 **[Log Ingestion Guide](docs/LOG_INGESTION.md)** - Guía de integración con sistemas existentes
-- 🚀 **[Quick Start](QUICK_START.md)** - Guía rápida de instalación y uso
-
-### Referencias Académicas
-
-- [SIEM Best Practices](https://www.sans.org/white-papers/)
-- [Isolation Forest Paper (Liu et al., 2008)](https://cs.nju.edu.cn/zhouzh/zhouzh.files/publication/icdm08b.pdf)
-- [DBSCAN (Ester et al., 1996)](https://www.aaai.org/Papers/KDD/1996/KDD96-037.pdf)
-- [ML for Cybersecurity](https://www.oreilly.com/library/view/machine-learning-and/9781492044925/)
-
----
-
-**⚠️ DISCLAIMER**: Este proyecto es para fines educativos y de investigación. No usar en producción sin revisar y adaptar a tus necesidades específicas de seguridad.
-
-**🔐 SECURITY**: Si encuentras una vulnerabilidad de seguridad, por favor **NO** abras un issue público. Envía un email a security@example.com.
+MIT for the code (see `LICENSE`). The evaluation dataset has its own license (CC BY-NC-SA 4.0).

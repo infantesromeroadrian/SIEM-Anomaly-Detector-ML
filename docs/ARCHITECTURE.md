@@ -1,5 +1,7 @@
 # SIEM Anomaly Detector - Architecture
 
+> Note: diagrams below show the original three-model ensemble. Since the evaluation, the default configuration scores with Isolation Forest only (weights `1.0,0.0,0.0`); DBSCAN and GMM are opt-in. See ML_ARCHITECTURE.md.
+
 ## System Overview
 
 ```
@@ -190,7 +192,7 @@ graph LR
     end
     
     subgraph "Feature Engineering"
-        F["21 Features<br/>- hour_of_day<br/>- failed_auth_rate<br/>- geographic_distance<br/>- payload_entropy<br/>- ..."]
+        F["21 deterministic features<br/>- hour_of_day<br/>- requests_per_second (60 s window)<br/>- error_rate_4xx (5 min window)<br/>- payload_entropy<br/>- ..."]
     end
     
     subgraph "Ensemble"
@@ -280,46 +282,19 @@ graph TB
 
 ## Feature Categories
 
-```
-+------------------------------------------+
-|           21 FEATURES EXTRACTED          |
-+------------------------------------------+
-|                                          |
-|  TEMPORAL (4)                            |
-|  ├─ hour_of_day (0-23)                   |
-|  ├─ day_of_week (0-6)                    |
-|  ├─ is_weekend (0/1)                     |
-|  └─ is_business_hours (0/1)              |
-|                                          |
-|  FREQUENCY (4)                           |
-|  ├─ login_attempts_per_minute            |
-|  ├─ requests_per_second                  |
-|  ├─ unique_ips_last_hour                 |
-|  └─ unique_endpoints_accessed            |
-|                                          |
-|  RATES (3)                               |
-|  ├─ failed_auth_rate                     |
-|  ├─ error_rate_4xx                       |
-|  └─ error_rate_5xx                       |
-|                                          |
-|  GEOGRAPHIC (3)                          |
-|  ├─ geographic_distance_km               |
-|  ├─ is_known_country (0/1)               |
-|  └─ is_known_ip (0/1)                    |
-|                                          |
-|  BEHAVIORAL (4)                          |
-|  ├─ bytes_transferred                    |
-|  ├─ time_since_last_activity_sec         |
-|  ├─ session_duration_sec                 |
-|  └─ payload_entropy                      |
-|                                          |
-|  CONTEXT (3)                             |
-|  ├─ is_privileged_user (0/1)             |
-|  ├─ is_sensitive_endpoint (0/1)          |
-|  └─ is_known_user_agent (0/1)            |
-|                                          |
-+------------------------------------------+
-```
+The authoritative list is `FEATURE_NAMES` in `backend/ml/features.py`. All features are deterministic and
+causal (an event only sees itself and earlier events); per-IP windows are held in memory.
+
+| Group | Features |
+|---|---|
+| Temporal (4) | hour_of_day, day_of_week, is_weekend, is_business_hours |
+| Per-IP activity (4) | login_attempts_per_minute, requests_per_second (60 s), unique_ips_last_hour, unique_endpoints_accessed (5 min) |
+| Per-IP ratios, 5 min (3) | failed_auth_rate, error_rate_4xx, error_rate_5xx |
+| Event content (7) | status_class, is_known_ip, bytes_transferred, time_since_last_activity_sec, path_length, special_char_ratio, payload_entropy |
+| Context (3) | is_privileged_user, is_sensitive_endpoint, is_known_user_agent |
+
+Earlier versions also had geographic distance, country and session-duration features; they were filled with
+random numbers (no GeoIP or session tracking existed) and have been removed.
 
 ---
 
@@ -329,8 +304,8 @@ graph TB
 |---------|------|----------|-------------|
 | Frontend | 5173 | HTTP | React Dashboard |
 | API | 8000 | HTTP | FastAPI REST API |
-| PostgreSQL | 5432 | TCP | TimescaleDB Database |
-| Redis | 6379 | TCP | Cache & Rate Limiting |
+| PostgreSQL | (internal) | TCP | TimescaleDB; not published to the host |
+| Redis | (internal) | TCP | Connectivity probe only; not published to the host |
 | Prometheus | 9090 | HTTP | Metrics Collection |
 | Grafana | 3000 | HTTP | Monitoring Dashboards |
 
@@ -414,7 +389,8 @@ SIEM-Anomaly-Detector-ML/
 ├── backend/
 │   ├── api/routes/          # REST endpoints
 │   ├── db/                  # Database models & CRUD
-│   ├── ml/                  # ML ensemble & features
+│   ├── ml/                  # ensemble, features, scoring
+│   ├── eval/                # dataset fetch, protocol, metrics
 │   ├── parsers/             # Log parsers
 │   ├── main.py              # FastAPI app
 │   └── config.py            # Settings
@@ -428,8 +404,11 @@ SIEM-Anomaly-Detector-ML/
 │   ├── ARCHITECTURE.md      # This file
 │   └── ML_ARCHITECTURE.md   # ML details
 ├── scripts/
-│   ├── train_ensemble.py    # Model training
-│   └── retrain_from_production.py
+│   ├── train_demo_model.py  # synthetic DEMO model for the container
+│   ├── benchmark.py         # throughput measurement
+│   └── log_generator.py     # DEMO ONLY synthetic traffic
+├── tests/                   # pytest suite
+├── results/                 # generated evaluation artefacts
 ├── monitoring/
 │   ├── prometheus.yml
 │   └── grafana/
@@ -439,4 +418,4 @@ SIEM-Anomaly-Detector-ML/
 
 ---
 
-*Last updated: January 14, 2026*
+*Updated 2026-11-07 to match the code; diagrams above that mention eps=5.0 are illustrative, defaults are in `.env.example`.*
